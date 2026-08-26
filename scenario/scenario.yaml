@@ -1,0 +1,452 @@
+# Сценарий бота «Зачисление в школу». Единственное место, где живут тексты
+# и кнопки — см. п.1 CLAUDE.md и docs/spec.md. Проверяется командой
+# `npm run scenario:check` (scripts/check-scenario.ts + scenario/schema.ts).
+#
+# Покрыты разделы 2–4 docs/spec.md: Старт (S0–S6) и Этапы 1–2 (E1.x, E2.x).
+# Этапы 3–6 (раздел 6 спеки) и постоянное меню (раздел 5) — следующий заход,
+# см. docs/spec.md, раздел 8.9, пункты 6–8.
+#
+# Спецпереходы (next), не являющиеся screen_id: menu, stop, kc, defer_to_stage2.
+# Текст поддерживает {{#if field}}..{{else}}..{{/if}} — рендерит движок.
+# Тексты "готовых ответов" в E1.4.* и путь `image:` — черновые, отмечены
+# ✎ там, где формулировку и скриншот должен дать заказчик (по аналогии с E1.7
+# из исходной спеки).
+
+version: "0.1.0"
+
+# Системные экраны-оверлеи (раздел 5 спеки + «Старые кнопки» из раздела 1).
+# Не входят в карту пути: переход на них не меняет stage пользователя,
+# кроме stop, который реально стирает данные (S1a «Удалить мои данные»).
+system:
+  kc:
+    text: >-
+      Опишу коллегам из службы сопровождения, на каком вы шаге —
+      не придётся пересказывать заново.
+    buttons:
+      - { label: "Написать в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+
+  menu:
+    text: "☰ Меню"
+    buttons:
+      - { label: "Статус зачисления", data: menu.status, next: status }
+      - { label: "Мои аттестации", data: menu.subjects, next: in_progress }
+      - { label: "Важные сроки", data: menu.dates, next: in_progress }
+      - { label: "Связаться с КС", data: menu.help, next: kc }
+
+  stop:
+    text: >-
+      Ваши данные удалены. Если передумаете — напишите /start,
+      и мы начнём заново.
+
+  stale:
+    text: "Этот шаг уже пройден. Вернуть вас на текущий?"
+    buttons:
+      - { label: "Да, к текущему шагу", data: stale.resume, next: current_screen }
+      - { label: "Показать статус", data: stale.status, next: status }
+
+  phone_invalid:
+    text: "Не получается распознать номер. Проверьте формат и отправьте ещё раз."
+
+  in_progress:
+    text: "Этот раздел появится вместе с этапами 3–6 — пока в разработке."
+
+screens:
+  # ───────────────────────── Старт (раздел 2 спеки) ─────────────────────────
+
+  - id: s0
+    stage: start
+    text: >-
+      Спасибо за оплату. Впереди несколько шагов — я проведу по каждому
+      и не дам потерять сроки.
+    buttons:
+      - { label: "Что мне нужно сделать", data: s0.begin, next: s1 }
+
+  - id: s1
+    stage: start
+    text: >-
+      Чтобы вести вас по шагам, мне нужно сохранить ваши ответы.
+      Подробности — в политике обработки данных.
+    buttons:
+      - { label: "Согласен, продолжить", data: s1.ok, next: s2 }
+      - { label: "Подробнее о данных", data: s1.info, next: s1a }
+
+  - id: s1a
+    stage: start
+    text: >-
+      Храним: имя, телефон, Telegram ID, пакет, класс, статус, ответы по
+      шагам и отметки чек-листов. Год хранения. Видят: секретариат и КС
+      в рамках вашего зачисления.
+    buttons:
+      - { label: "Согласен, продолжить", data: s1a.ok, next: s2 }
+      - { label: "Удалить мои данные", data: s1a.wipe, next: stop }
+    back: s1
+
+  - id: s2
+    stage: start
+    text: "Как к вам обращаться?"
+    input:
+      field: name
+      next: s2b
+      validation: none
+    back: s1
+
+  - id: s2b
+    stage: start
+    text: >-
+      Оставьте номер — по нему коллеги из КС смогут вас найти,
+      если понадобится помощь.
+    input:
+      field: phone
+      next: s3
+      validation: phone
+      maxAttempts: 2
+      skipButton: { label: "Пропустить", data: s2b.skip, next: s3 }
+    back: s2
+
+  - id: s3
+    stage: start
+    text: "Какой пакет вы приобрели?"
+    buttons:
+      - { label: "Базовый", data: s3.base, next: s4, setField: { field: package, value: "Базовый" } }
+      - { label: "Другой", data: s3.other, next: s3a, setField: { field: package, value: "Другой" } }
+    back: s2b
+
+  - id: s3a
+    stage: start
+    text: >-
+      Сценарий для вашего пакета готовится. Пока могу показать
+      ключевые даты — они общие.
+    buttons:
+      - { label: "Важные сроки", data: s3a.dates, next: menu }
+      - { label: "Сообщить, когда будет готово", data: s3a.waitlist, next: menu }
+      - { label: "Написать в КС", data: s3a.kc, next: kc }
+    back: s3
+
+  - id: s4
+    stage: start
+    text: "В какой класс зачисляетесь?"
+    grid: true
+    buttons:
+      - { label: "1", data: s4.k1, next: s5, setField: { field: class, value: "1" } }
+      - { label: "2", data: s4.k2, next: s5, setField: { field: class, value: "2" } }
+      - { label: "3", data: s4.k3, next: s5, setField: { field: class, value: "3" } }
+      - { label: "4", data: s4.k4, next: s5, setField: { field: class, value: "4" } }
+      - { label: "5", data: s4.k5, next: s5, setField: { field: class, value: "5" } }
+      - { label: "6", data: s4.k6, next: s5, setField: { field: class, value: "6" } }
+      - { label: "7", data: s4.k7, next: s5, setField: { field: class, value: "7" } }
+      - { label: "8", data: s4.k8, next: s5, setField: { field: class, value: "8" } }
+      - { label: "10", data: s4.k10, next: s5, setField: { field: class, value: "10" } }
+    back: s3
+
+  - id: s5
+    stage: start
+    text: "Вы у нас впервые или уже учились?"
+    buttons:
+      - { label: "Впервые", data: s5.new, next: s6, setField: { field: isReturning, value: "false" } }
+      - { label: "Уже учились", data: s5.ret, next: s6, setField: { field: isReturning, value: "true" } }
+    back: s4
+
+  - id: s6
+    stage: start
+    text: |-
+      Впереди 6 шагов:
+      1. Доступ — сегодня
+      2. Зачисление — ближайшие дни
+      3. Обучение — весь год
+      4. Аттестации — до конца мая
+      5. Справка
+      6. Продление
+
+      Первые два пройдём сейчас, это несколько минут.
+    buttons:
+      - { label: "Начинаем", data: s6.go, next: e1_1 }
+    back: s5
+
+  # ─────────────────── Этап 1. Доступ к платформе (раздел 3) ───────────────────
+
+  - id: e1_1
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "Письмо с доступом пришло?"
+    buttons:
+      - { label: "Да, письмо у меня", data: e1_1.yes, next: e1_3 }
+      - { label: "Нет", data: e1_1.no, next: e1_2 }
+    back: s6
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: e1.defer, next: e2_0 }
+
+  - id: e1_2
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "Загляните в «Спам» и «Промоакции»."
+    buttons:
+      - { label: "Нашёл", data: e1_2.found, next: e1_3 }
+      - { label: "Там пусто", data: e1_2.empty, next: e1_2a }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: e1.defer, next: e2_0 }
+
+  - id: e1_2a
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: >-
+      Похоже, письма нет. Дальше подскажет служба сопровождения —
+      она видит, на каком вы шаге.
+    buttons:
+      - { label: "Написать в КС", data: e1_2a.kc, next: kc }
+      - { label: "Я разберусь позже", data: e1_2a.later, next: e2_0 }
+    menu: true
+
+  - id: e1_3
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "Получилось войти на платформу?"
+    buttons:
+      - { label: "Да, я внутри", data: e1_3.yes, next: e1_5 }
+      - { label: "Не получается", data: e1_3.no, next: e1_4 }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: e1.defer, next: e2_0 }
+
+  - id: e1_4
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "Что происходит?"
+    buttons:
+      - { label: "Не подходит пароль", data: e1_4.password, next: e1_4_password }
+      - { label: "Страница не открывается", data: e1_4.page, next: e1_4_page }
+      - { label: "Не понимаю, куда нажимать", data: e1_4.confused, next: e1_4_confused }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: e1.defer, next: e2_0 }
+
+  - id: e1_4_password
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: >-
+      ✎ Нажмите «Забыли пароль» на странице входа — новый пароль придёт
+      на почту, с которой вы регистрировались.
+    buttons:
+      - { label: "Да", data: e1_4_password.yes, next: e1_5 }
+      - { label: "Нет", data: e1_4_password.no, next: kc }
+
+  - id: e1_4_page
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: >-
+      ✎ Попробуйте открыть страницу в другом браузере или обновить
+      текущий — часто помогает.
+    buttons:
+      - { label: "Да", data: e1_4_page.yes, next: e1_5 }
+      - { label: "Нет", data: e1_4_page.no, next: kc }
+
+  - id: e1_4_confused
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "✎ После входа нажмите на первую плитку в центре экрана — это вход в Город."
+    buttons:
+      - { label: "Да", data: e1_4_confused.yes, next: e1_5 }
+      - { label: "Нет", data: e1_4_confused.no, next: kc }
+
+  - id: e1_5
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "Вы видите Город. Как вам?"
+    buttons:
+      - { label: "Нравится", data: e1_5.like, next: e1_6 }
+      - { label: "Пока непонятно", data: e1_5.unclear, next: e1_5b }
+    menu: true
+
+  - id: e1_5b
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "Что смущает? Опишите в двух словах — учтём."
+    input:
+      field: city_feedback
+      next: e1_5c
+      validation: none
+
+  - id: e1_5c
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: >-
+      Спасибо! Экскурсия по Городу помогает освоиться —
+      пройдите её вместе с героем.
+    buttons:
+      - { label: "Спасибо, посмотрю", data: e1_5c.ok, next: e1_6 }
+
+  - id: e1_6
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: 'Загляните в Школу → «Информация для старта».'
+    buttons:
+      - { label: "Нашёл", data: e1_6.found, next: e1_7 }
+      - { label: "Не нашёл", data: e1_6.notfound, next: e1_6b }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: e1.defer, next: e2_0 }
+
+  - id: e1_6b
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: 'Зайдите в раздел «Школа», затем откройте «Информация для старта» — вот как это выглядит.'
+    image: "✎ shots/e1_6b_school_info.png"
+    buttons:
+      - { label: "Дальше", data: e1_6b.ok, next: e1_7 }
+
+  - id: e1_7
+    stage: stage1_access
+    stepLabel: "Шаг 1 из 6 · Доступ"
+    text: "✎ Доступ открыт. — формулировку даёт заказчик"
+    buttons:
+      - { label: "Дальше — к зачислению", data: e1_7.next, next: e2_0 }
+
+  # ─────────────────── Этап 2. Официальное зачисление (раздел 4) ───────────────────
+
+  - id: e2_0
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: >-
+      Рекомендуем пройти оформление за 10 дней. Не потому что что-то
+      пропадёт, а потому что справка готовится не мгновенно.
+    buttons:
+      - { label: "Понятно, начинаем", data: e2_0.ok, next: e2_1 }
+    back: s6
+    menu: true
+
+  - id: e2_1
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Письмо со списком документов пришло?"
+    buttons:
+      - { label: "Да", data: e2_1.yes, next: e2_2 }
+      - { label: "Нет", data: e2_1.no, next: e2_1_spam }
+      - { label: "Пока пройду шаг с платформой", data: e2_1.to_stage1, next: e1_1 }
+    menu: true
+
+  - id: e2_1_spam
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Загляните в «Спам» и «Промоакции»."
+    buttons:
+      - { label: "Нашёл", data: e2_1_spam.found, next: e2_2 }
+      - { label: "Там пусто", data: e2_1_spam.empty, next: e2_1_kc }
+    menu: true
+
+  - id: e2_1_kc
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: >-
+      Похоже, письма нет. Дальше подскажет служба сопровождения —
+      она видит, на каком вы шаге.
+    buttons:
+      - { label: "Написать в КС", data: e2_1_kc.kc, next: kc }
+      - { label: "Я разберусь позже", data: e2_1_kc.later, next: e2_2 }
+    menu: true
+
+  - id: e2_2
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: >-
+      {{#if isReturning}}Вам нужны только недостающие документы. Отправили?{{else}}Отправили документы по списку?{{/if}}
+    buttons:
+      - { label: "Да, отправил", data: e2_2.yes, next: e2_3 }
+      - { label: "Ещё нет", data: e2_2.no, next: e2_2a }
+    menu: true
+
+  - id: e2_2a
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Что мешает?"
+    buttons:
+      - { label: "Не хватает документа", data: e2_2a.missing_doc, next: e2_2a_missing }
+      - { label: "Не понял, что нужно", data: e2_2a.unclear_list, next: e2_2a_list }
+      - { label: "Не понял, куда слать", data: e2_2a.unclear_where, next: e2_2a_where }
+      - { label: "Нужно время", data: e2_2a.need_time, next: e2_2a_time }
+
+  - id: e2_2a_missing
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: >-
+      ✎ Частые причины: документ оформлен не на того родителя, нет
+      прописки, старое фото. Если не про ваш случай — уточним в КС.
+    buttons:
+      - { label: "Разобрался", data: e2_2a_missing.ok, next: e2_2 }
+      - { label: "Нужна помощь КС", data: e2_2a_missing.kc, next: kc }
+
+  - id: e2_2a_list
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: |-
+      1) Откройте письмо со списком.
+      2) Сверьте с чек-листом на платформе.
+      3) Соберите всё одним архивом.
+    buttons:
+      - { label: "Понятно", data: e2_2a_list.ok, next: e2_2 }
+
+  - id: e2_2a_where
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: |-
+      1) Зайдите в Секретариат.
+      2) Откройте «Загрузка документов».
+      3) Прикрепите файлы и нажмите «Отправить».
+    buttons:
+      - { label: "Понятно", data: e2_2a_where.ok, next: e2_2 }
+
+  - id: e2_2a_time
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Хорошо, не буду торопить. Когда вам напомнить?"
+    buttons:
+      - { label: "Напомнить завтра", data: e2_2a_time.tomorrow, next: e2_2 }
+      - { label: "Через 3 дня", data: e2_2a_time.in3days, next: e2_2 }
+
+  - id: e2_3
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Школа прислала документы на подпись?"
+    buttons:
+      - { label: "Да", data: e2_3.yes, next: e2_4 }
+      - { label: "Пока нет", data: e2_3.no, next: e2_3_wait }
+    menu: true
+
+  - id: e2_3_wait
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Придут следующим письмом — сообщу, когда стоит проверить снова."
+    buttons:
+      - { label: "Хорошо", data: e2_3_wait.ok, next: e2_3 }
+
+  - id: e2_4
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Подписали и отправили обратно?"
+    buttons:
+      - { label: "Да", data: e2_4.yes, next: e2_5 }
+      - { label: "Ещё нет", data: e2_4.no, next: e2_4_wait }
+    menu: true
+
+  - id: e2_4_wait
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: "Хорошо, не буду торопить. Когда вам напомнить?"
+    buttons:
+      - { label: "Напомнить завтра", data: e2_4_wait.tomorrow, next: e2_4 }
+      - { label: "Через 3 дня", data: e2_4_wait.in3days, next: e2_4 }
+
+  - id: e2_5
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: |-
+      Готово. Дальше всё делаем мы: справка появится в Секретариате → «Справки».
+      Готовится 3 дня после подачи, но не раньше 10 сентября. Скачивать не нужно.
+    buttons:
+      - { label: "Что дальше?", data: e2_5.next, next: e2_6 }
+
+  - id: e2_6
+    stage: stage2_enrollment
+    stepLabel: "Шаг 2 из 6 · Зачисление"
+    text: |-
+      ✦ Путь открыт. Два шага из шести позади — самые срочные.
+      Дальше год спокойный: я напомню про аттестации и справку сам.
+    buttons:
+      - { label: "Посмотреть чек-лист аттестаций", data: e2_6.checklist, next: menu }
+      - { label: "Важные сроки", data: e2_6.dates, next: menu }
+    menu: true

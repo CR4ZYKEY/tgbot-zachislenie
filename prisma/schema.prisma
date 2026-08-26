@@ -1,0 +1,157 @@
+// Схема БД. См. раздел 8 docs/spec.md — «Схема данных (минимум)».
+//
+// Намеренно НЕ заводим Postgres-enum для package/class/stage/screenId:
+// это конфигурация сценария (YAML), а не структура БД. Если завтра
+// добавится второй пакет или новый экран, это не должно требовать миграции.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String @id @default(cuid())
+  tgId     BigInt @unique
+
+  // Персональные данные — см. п.5 CLAUDE.md: только это и ничего сверх.
+  clientCode String? @unique
+  name       String?
+  phone      String?
+
+  package     String?
+  class       String?
+  isReturning Boolean?
+
+  // Текущее место в сценарии — screen_id из scenario.yaml.
+  stage String @default("s0")
+
+  // Счётчик версий рендера текущего экрана. Зашивается в callback_data
+  // вместе со screen_id (п.1 раздела 1 docs/spec.md, «Старые кнопки») —
+  // так движок отличает нажатие на кнопку из устаревшего сообщения.
+  renderVersion Int @default(0)
+
+  // Стек посещённых screen_id для "← Назад" (раздел 1 спеки: "на предыдущий
+  // экран, ответы не сбрасываются"). Явный screen.back в сценарии, если
+  // задан, имеет приоритет над стеком.
+  historyStack String[] @default([])
+
+  // Попытки ввода телефона (S2b): после двух неудач — кнопка «Пропустить».
+  phoneAttempts Int @default(0)
+
+  // Telegram message_id последнего сообщения основной ленты — редактируем
+  // его при переходах, вместо того чтобы слать новое сообщение на каждый
+  // шаг. Экраны-оверлеи (меню/КС/устаревшая кнопка) сюда не попадают —
+  // это отдельные всплывающие сообщения, не часть ленты.
+  lastMessageId Int?
+
+  // Message_id последнего показанного оверлея (меню/КС/stale/...). Перед
+  // показом нового оверлея прежний удаляется — иначе повторные "☰ Меню"
+  // копятся в чате одинаковыми сообщениями одно под другим.
+  lastOverlayMessageId Int?
+
+  // Куда ведёт "← Назад" у ТЕКУЩЕГО оверлея: "menu" — вернуться в меню
+  // (если оверлей открыт прямым переходом из меню), NULL — вернуться в
+  // основную ленту (по умолчанию, если оверлей открыт откуда угодно ещё).
+  // Перезаписывается при каждом показе оверлея — не переживает переход
+  // на новый оверлей/экран.
+  overlayBackTarget String?
+
+  // Точка возврата, если этап 1 отложен (E1.x -> resume_point -> E2.0).
+  resumePoint     String?
+  deferredStage1  Boolean @default(false)
+
+  // Учебный год, к которому приписан родитель — раздел 8.2 спеки.
+  cohortYear Int?
+
+  consentAt    DateTime?
+  lastTouchAt  DateTime?
+
+  // Этапы, поставленные на паузу правилом «3 неотвеченных касания подряд».
+  mutedStages       String[] @default([])
+  consecutiveMisses Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ВРЕМЕННО, ТОЛЬКО ДЛЯ ТЕСТОВОГО БОТА — см. src/worker/sheets-sync.service.ts.
+  // Хеш последних значений бизнес-полей, отданных в корпоративную Google-таблицу.
+  // Не совпадает с текущим хешем строки в таблице -> строку правили руками ->
+  // тянем изменение в БД. Не совпадает с хешем текущих полей в БД -> бот
+  // сам изменил данные -> перезаписываем строку в таблице. NULL — ещё не
+  // синхронизировался (новый пользователь, строки в таблице ещё нет).
+  // По спеке (раздел 8) выгрузка в Sheets должна быть односторонней и раз
+  // в сутки, только client_code — это временное отступление до продакшена.
+  sheetSyncHash String?
+
+  answers   Answer[]
+  checklist ChecklistItem[]
+  jobs      Job[]
+
+  @@map("users")
+}
+
+// Лист «Затруднения» — каждый ответ на экране, включая свободный ввод
+// и выбор кнопки в развилках «Что происходит?» / «Что мешает?».
+model Answer {
+  id        String   @id @default(cuid())
+  userId    String
+  screenId  String
+  value     String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, screenId])
+  @@map("answers")
+}
+
+// Чек-лист аттестаций (Э3/Э4) — один предмет на строку.
+model ChecklistItem {
+  id      String    @id @default(cuid())
+  userId  String
+  subject String
+  doneAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, subject])
+  @@map("checklist_items")
+}
+
+// Очередь напоминаний. dedup_key гарантирует, что рестарт воркера
+// не продублирует отправку (раздел 8, «Гигиена касаний»).
+model Job {
+  id       String   @id @default(cuid())
+  userId   String
+  jobType  String
+  runAt    DateTime
+  dedupKey String   @unique
+
+  // pending | sent | answered | failed | cancelled
+  status String @default("pending")
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([runAt, status])
+  @@map("jobs")
+}
+
+// ВРЕМЕННО, ТОЛЬКО ДЛЯ ТЕСТОВОГО БОТА — курсор для выгрузки answers
+// (лог "Затруднений") во вкладку "Ответы" Google-таблицы, см.
+// src/worker/sheets-sync.service.ts. Хранит момент последнего
+// выгруженного ответа по времени, а не по количеству строк — иначе
+// "газ с начала" (массовое удаление users/answers) сбивал бы выгрузку.
+model SyncCursor {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("sync_cursors")
+}
