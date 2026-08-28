@@ -17,7 +17,7 @@ export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2'] a
 
 // Обязательные системные экраны — не часть карты пути, но текст в них
 // показывается родителю, поэтому по правилу 1 CLAUDE.md тоже живёт в YAML.
-export const SYSTEM_SCREEN_KEYS = ['kc', 'menu', 'stop', 'stale', 'phone_invalid', 'in_progress'] as const;
+export const SYSTEM_SCREEN_KEYS = ['kc', 'menu', 'stop', 'stale', 'phone_invalid', 'in_progress', 'status_complete'] as const;
 export type SystemScreenKey = (typeof SYSTEM_SCREEN_KEYS)[number];
 
 const idRegex = /^[a-z0-9_.]+$/;
@@ -88,6 +88,10 @@ export const ScreenSchema = z.object({
   menu: z.boolean().optional(),
   // "Зайду на платформу позже — к зачислению" (доступна на E1.1–E1.6).
   deferButton: ButtonSchema.optional(),
+  // Экран считается концом построенного пути (сейчас — конец Этапа 2, до
+  // появления этапов 3–6). "Статус зачисления" из меню на таком экране
+  // показывает system.status_complete вместо повтора самого экрана.
+  terminal: z.boolean().optional(),
 });
 export type Screen = z.infer<typeof ScreenSchema>;
 
@@ -112,6 +116,9 @@ export const SystemScreensSchema = z.object({
   phone_invalid: SystemScreenSchema,
   // Мягкий тупик для разделов меню, которых ещё нет (этапы 3–6).
   in_progress: SystemScreenSchema,
+  // "Статус зачисления" из меню, когда экран пользователя помечен
+  // screen.terminal (см. ScreenSchema) — вместо повтора финального экрана.
+  status_complete: SystemScreenSchema,
 });
 export type SystemScreens = z.infer<typeof SystemScreensSchema>;
 

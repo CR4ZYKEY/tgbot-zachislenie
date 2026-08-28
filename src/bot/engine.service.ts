@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
-import { GrammyError, InlineKeyboard, type Context } from 'grammy';
+import type { Context } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
@@ -55,47 +55,24 @@ export class EngineService {
   // перерисовываем текущий экран (состояние живёт в Postgres, п.2 CLAUDE.md).
   async start(ctx: Context, tgId: bigint): Promise<void> {
     const user = await this.getOrCreateUser(tgId);
-    // forceNew: /start — явный запрос родителя, а не переход внутри сценария.
-    // Если вернувшийся родитель стоит на том же экране, что и до перезапуска,
-    // молчаливое редактирование (текст и клавиатура не меняются) выглядит
-    // так, будто бот не ответил — Telegram не подсвечивает такую правку.
-    await this.render(ctx, user, user.stage, { pushHistory: false, forceNew: true });
-  }
-
-  // Редактирует предыдущее сообщение основной ленты вместо того, чтобы
-  // слать новое на каждый шаг (иначе диалог разъезжается сообщениями подряд).
-  // Если редактировать нечего или Telegram отказал (сообщение слишком старое,
-  // удалено родителем и т.п.) — отправляет новое и запоминает его id.
-  private async deliver(
-    ctx: Context,
-    chatId: number,
-    existingMessageId: number | null,
-    text: string,
-    kb: InlineKeyboard,
-  ): Promise<number> {
-    if (existingMessageId) {
-      try {
-        const result = await ctx.api.editMessageText(chatId, existingMessageId, text, { reply_markup: kb });
-        return typeof result === 'object' ? result.message_id : existingMessageId;
-      } catch (err) {
-        const description = err instanceof GrammyError ? err.description : String(err);
-        if (description.includes('message is not modified')) return existingMessageId;
-        this.logger.warn(`Не удалось отредактировать сообщение ${existingMessageId}, отправляю новое: ${description}`);
-      }
-    }
-    const sent = await ctx.api.sendMessage(chatId, text, { reply_markup: kb });
-    return sent.message_id;
+    await this.render(ctx, user, user.stage, { pushHistory: false });
   }
 
   // Переход на реальный экран сценария: двигает stage, ведёт историю для
   // "← Назад", сбрасывает счётчик попыток телефона — но только если экран
   // реально меняется, а не перерисовывается тем же (иначе кнопка «Пропустить»
   // на S2b теряет свой счётчик до того, как на неё успевают нажать).
+  //
+  // Каждый переход — НОВОЕ сообщение (п.о просьбе заказчика: история должна
+  // сохраняться целиком, а не стираться правкой в одном и том же сообщении).
+  // Раньше редактирование на месте внутри одной группы экранов съедало
+  // собственные заголовки/кнопки промежуточных шагов — их нельзя было
+  // прокрутить и посмотреть заново, что и было главной жалобой.
   private async render(
     ctx: Context,
     user: User,
     targetScreenId: string,
-    opts: { pushHistory: boolean; extraButtons?: Button[]; forceNew?: boolean } = { pushHistory: true },
+    opts: { pushHistory: boolean; extraButtons?: Button[] } = { pushHistory: true },
   ): Promise<void> {
     const screen = this.scenario.getScreen(targetScreenId);
     const changingScreen = user.stage !== targetScreenId;
@@ -136,10 +113,13 @@ export class EngineService {
     }
 
     const chatId = ctx.chat!.id;
-    const existingMessageId = opts.forceNew ? null : updated.lastMessageId;
-    const messageId = await this.deliver(ctx, chatId, existingMessageId, text, kb);
-    if (messageId !== updated.lastMessageId) {
-      await this.prisma.user.update({ where: { id: updated.id }, data: { lastMessageId: messageId } });
+    // parse_mode HTML — сценарий может выделять важное <b>жирным</b> прямо
+    // в тексте (см. scenario.yaml). HTML выбран вместо MarkdownV2, потому
+    // что не требует экранирования пунктуации («», →, . и т.п.), которой
+    // в текстах много.
+    const sent = await ctx.api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
+    if (sent.message_id !== updated.lastMessageId) {
+      await this.prisma.user.update({ where: { id: updated.id }, data: { lastMessageId: sent.message_id } });
     }
   }
 
@@ -170,7 +150,7 @@ export class EngineService {
         // Сообщение могли удалить руками или оно устарело для удаления — не критично.
       });
     }
-    const sent = await ctx.api.sendMessage(chatId, text, { reply_markup: kb });
+    const sent = await ctx.api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
     // overlayBackTarget перезаписывается на каждый показ — иначе значение от
     // предыдущего оверлея (например, "menu" от КС) протекло бы в следующий
     // (скажем, в stale), и его "← Назад" вело бы не туда.
@@ -184,15 +164,36 @@ export class EngineService {
     // S1a «Удалить мои данные» — п.5 CLAUDE.md: реально стираем, не просто скрываем.
     // Cascade в prisma/schema.prisma удаляет answers/checklist_items/jobs вместе с users.
     await this.prisma.user.delete({ where: { id: user.id } });
-    await ctx.reply(this.scenario.system.stop.text);
+    await ctx.reply(this.scenario.system.stop.text, { parse_mode: 'HTML' });
   }
 
+  // "Статус зачисления" из меню/команды /status: если построенный путь уже
+  // пройден (screen.terminal — сейчас это конец Этапа 2, до появления
+  // этапов 3–6) — показываем отдельное поздравление вместо повтора того же
+  // финального экрана. Если родитель ещё в процессе — просто возвращаем
+  // его туда, где он остановился, как и раньше.
   async runStatusCommand(ctx: Context, tgId: bigint): Promise<void> {
     const user = await this.getOrCreateUser(tgId);
-    // forceNew — та же причина, что у /start: явная команда родителя должна
-    // дать видимый результат новым сообщением, а не тихой правкой того, что
-    // могло уйти далеко вверх по чату.
-    await this.render(ctx, user, user.stage, { pushHistory: false, forceNew: true });
+    await this.showStatus(ctx, user);
+  }
+
+  // "Показать статус" — общая точка и для команды /status, и для кнопки
+  // "Статус зачисления" внутри меню. Закрывает текущий оверлей (если он
+  // был), затем: путь уже пройден (screen.terminal) — показывает отдельное
+  // поздравление; иначе — просто возвращает туда, где родитель остановился.
+  private async showStatus(ctx: Context, user: User): Promise<void> {
+    if (user.lastOverlayMessageId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.lastOverlayMessageId).catch(() => {
+        // Уже удалено/недоступно — не критично.
+      });
+      await this.prisma.user.update({ where: { id: user.id }, data: { lastOverlayMessageId: null } }).catch(() => {});
+    }
+    const screen = this.scenario.getScreen(user.stage);
+    if (screen.terminal) {
+      await this.showOverlay(ctx, user, 'status_complete');
+      return;
+    }
+    await this.render(ctx, user, user.stage, { pushHistory: false });
   }
 
   // Возврат из оверлея ("← Назад", "Да, к текущему шагу" на stale, "Статус
@@ -201,13 +202,10 @@ export class EngineService {
   // а не в поток: иначе "Важные сроки" → "Назад" уносило бы прямиком на
   // "Шаг 2 из 6", а не туда, откуда реально пришли.
   //
-  // Во всех остальных случаях: оверлей — это всплывающее сообщение НАД уже
-  // существующим сообщением ленты, которое никуда не делось, просто
-  // оказалось на строчку выше. Поэтому "назад" — это удалить оверлей и
-  // ОБНОВИТЬ (не заново прислать!) то сообщение на месте: обновление нужно,
-  // чтобы перевыпустить неустаревшие кнопки (типичный случай — после stale),
-  // а не слать новое, иначе каждое открытие/закрытие "☰ Меню" плодило бы
-  // дубль экрана — ровно тот баг, из-за которого это исправление появилось.
+  // Во всех остальных случаях: удаляем сам оверлей (он всплывающий, история
+  // ему не нужна) и шлём текущий экран новым сообщением — как и весь
+  // остальной поток теперь (см. render()): новое сообщение и перевыпускает
+  // неустаревшие кнопки, и остаётся в истории чата.
   private async returnFromOverlay(ctx: Context, user: User): Promise<void> {
     if (user.overlayBackTarget === 'menu') {
       await this.showOverlay(ctx, user, 'menu');
@@ -250,13 +248,19 @@ export class EngineService {
         this.logger.warn(`Неизвестный callback_data "${decoded.data}" на оверлее "${decoded.screenId}"`);
         return;
       }
-      // "current_screen"/"status" ведут не на другой оверлей, а обратно в
-      // основную ленту (или в меню, если и туда пришли из меню — см.
-      // returnFromOverlay). Обычный dispatch() тихо отредактировал бы старое
-      // сообщение, невидимое без прокрутки, и клик выглядел бы так, будто
-      // кнопка "никуда не ведёт" (ровно этот баг и был).
-      if (button.next === 'current_screen' || button.next === 'status') {
+      // "current_screen" ведёт не на другой оверлей, а обратно в основную
+      // ленту (или в меню, если и туда пришли из меню — см. returnFromOverlay).
+      // Обычный dispatch() тихо отредактировал бы старое сообщение, невидимое
+      // без прокрутки, и клик выглядел бы так, будто кнопка "никуда не
+      // ведёт" (ровно этот баг и был).
+      if (button.next === 'current_screen') {
         await this.returnFromOverlay(ctx, user);
+        return;
+      }
+      // "status" — отдельная логика (см. showStatus): путь мог быть уже
+      // пройден, тогда нужно поздравление, а не повтор финального экрана.
+      if (button.next === 'status') {
+        await this.showStatus(ctx, user);
         return;
       }
       // Клик сделан прямо на сообщении меню ("☰ Меню" → пункт) — у экрана,
@@ -264,7 +268,7 @@ export class EngineService {
       // а не в поток. Для остальных путей к тому же оверлею (например, КС
       // с любого экрана этапов 1–2) поведение не меняется.
       const cameFromMenu = decoded.screenId === 'menu';
-      await this.dispatch(ctx, user, button.next!, false, cameFromMenu ? 'menu' : undefined);
+      await this.dispatch(ctx, user, button.next!, cameFromMenu ? 'menu' : undefined);
       return;
     }
 
@@ -337,21 +341,9 @@ export class EngineService {
     return undefined;
   }
 
-  // forceNew: когда переход вызван свободным текстом (handleFreeText) —
-  // родитель только что отправил своё сообщение, и оно физически легло
-  // ниже прежнего сообщения бота. Редактировать то, старое, бесполезно —
-  // оно всё равно останется выше только что написанного текста, и придётся
-  // листать вверх. Поэтому ответ на текстовый ввод — всегда новое сообщение.
-  // Переходы по нажатию кнопки (forceNew: false) — как раньше, редактируем.
-  private async dispatch(
-    ctx: Context,
-    user: User,
-    target: string,
-    forceNew = false,
-    overlayBackTarget?: 'menu',
-  ): Promise<void> {
+  private async dispatch(ctx: Context, user: User, target: string, overlayBackTarget?: 'menu'): Promise<void> {
     if (target === 'current_screen') {
-      await this.render(ctx, user, user.stage, { pushHistory: false, forceNew });
+      await this.render(ctx, user, user.stage, { pushHistory: false });
       return;
     }
     if (target === 'status') {
@@ -366,7 +358,7 @@ export class EngineService {
       await this.showOverlay(ctx, user, target, overlayBackTarget);
       return;
     }
-    await this.render(ctx, user, target, { pushHistory: true, forceNew });
+    await this.render(ctx, user, target, { pushHistory: true });
   }
 
   // Свободный ввод: ровно три места в сценарии (п.4 CLAUDE.md) — имя,
@@ -394,7 +386,7 @@ export class EngineService {
             ctx,
             { ...user, phoneAttempts: attempts },
             user.stage,
-            { pushHistory: false, extraButtons: [screen.input.skipButton], forceNew: true },
+            { pushHistory: false, extraButtons: [screen.input.skipButton] },
           );
         } else {
           await this.showOverlay(ctx, user, 'phone_invalid');
@@ -404,7 +396,7 @@ export class EngineService {
 
       await this.prisma.answer.create({ data: { userId: user.id, screenId: user.stage, value: normalized } });
       await this.prisma.user.update({ where: { id: user.id }, data: { phone: normalized } });
-      await this.dispatch(ctx, { ...user, phone: normalized }, next, true);
+      await this.dispatch(ctx, { ...user, phone: normalized }, next);
       return;
     }
 
@@ -415,6 +407,6 @@ export class EngineService {
       await this.prisma.user.update({ where: { id: user.id }, data: { name: clean } });
     }
 
-    await this.dispatch(ctx, user, next, true);
+    await this.dispatch(ctx, user, next);
   }
 }
