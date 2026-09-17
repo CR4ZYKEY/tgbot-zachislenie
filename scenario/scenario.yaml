@@ -43,15 +43,16 @@ system:
       Опишу коллегам из службы сопровождения, на каком вы шаге —
       не придётся пересказывать заново.
     buttons:
-      - { label: "Написать в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Написать в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
 
   menu:
+    image: "shots/menu-control-podium.jpg"
     text: "☰ <b>Меню</b>"
     buttons:
       - { label: "Статус зачисления", data: menu.status, next: status }
       - { label: "Мои аттестации", data: menu.subjects, next: in_progress }
       - { label: "Важные сроки", data: menu.dates, next: in_progress }
-      - { label: "Написать в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Написать в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
 
   stop:
     text: >-
@@ -72,6 +73,7 @@ system:
       +7 900 000-00-00) и отправьте ещё раз.
 
   in_progress:
+    image: "shots/in-progress-beacon.jpg"
     text: >-
       Этот раздел откроется чуть позже, вместе с этапами 3–6 — сейчас
       я его для вас готовлю.
@@ -87,6 +89,7 @@ screens:
 
   - id: s0
     stage: start
+    image: "shots/s0-welcome-letter.jpg"
     text: >-
       Спасибо за оплату! Впереди несколько шагов — я проведу вас
       по каждому и не дам потерять сроки.
@@ -95,6 +98,7 @@ screens:
 
   - id: s1
     stage: start
+    image: "shots/s1-s1a-data-shield.jpg"
     text: >-
       Чтобы вести вас по шагам и ничего не упустить, мне нужно
       сохранять ваши ответы. Подробности — в политике обработки данных.
@@ -104,10 +108,11 @@ screens:
 
   - id: s1a
     stage: start
+    image: "shots/s1-s1a-data-shield.jpg"
     text: >-
       Храним только необходимое: имя, телефон, Telegram ID, пакет,
       класс, статус, ваши ответы по шагам и отметки чек-листов —
-      год хранения. Видят их секретариат и КС, и только в рамках
+      год хранения. Видят их секретариат и клиентский сервис, и только в рамках
       вашего зачисления.
     buttons:
       - { label: "Согласен, продолжить", data: s1a.ok, next: s2 }
@@ -116,6 +121,7 @@ screens:
 
   - id: s2
     stage: start
+    image: "shots/s2-name-patch.jpg"
     text: "Как к вам обращаться?"
     input:
       field: name
@@ -125,8 +131,9 @@ screens:
 
   - id: s2b
     stage: start
+    image: "shots/s2b-signal-beacon.jpg"
     text: >-
-      Оставьте номер — по нему коллеги из КС смогут вас найти,
+      Оставьте номер — по нему коллеги из клиентского сервиса смогут вас найти,
       если вдруг понадобится помощь.
     input:
       field: phone
@@ -138,6 +145,7 @@ screens:
 
   - id: s3
     stage: start
+    image: "shots/s3-s3a-cape-choice.jpg"
     text: "Какой пакет вы приобрели?"
     buttons:
       - { label: "Базовый", data: s3.base, next: s4, setField: { field: package, value: "Базовый" } }
@@ -146,17 +154,19 @@ screens:
 
   - id: s3a
     stage: start
+    image: "shots/s3-s3a-cape-choice.jpg"
     text: >-
       Сценарий для вашего пакета мы ещё готовим. А пока могу
       показать ключевые даты — они общие для всех пакетов.
     buttons:
       - { label: "Важные сроки", data: s3a.dates, next: menu }
       - { label: "Сообщить, когда будет готово", data: s3a.waitlist, next: menu }
-      - { label: "Написать в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Написать в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
     back: s3
 
   - id: s4
     stage: start
+    image: "shots/s4-nine-class-doors.jpg"
     text: "В какой класс зачисляетесь?"
     grid: true
     buttons:
@@ -173,6 +183,7 @@ screens:
 
   - id: s5
     stage: start
+    image: "shots/s5-garden-fork.jpg"
     text: "Вы у нас впервые или уже учились?"
     buttons:
       - { label: "Впервые", data: s5.new, next: s6, setField: { field: isReturning, value: "false" } }
@@ -181,13 +192,13 @@ screens:
 
   - id: s6
     stage: start
+    image: "shots/s6-six-beacons-map.jpg"
     # Даты 4/6 — под когорту 2026/2027 (тариф «Базовый Круглый год», см.
     # инструкцию заказчика). Когда появятся этапы 3–6 с их напоминаниями
     # (раздел 8.9 CLAUDE.md, п.8) — заменить на подстановку по cohort_year,
     # а не хардкодить год на будущее.
     text: |-
-      Спасибо за ответы! У нас есть ещё несколько шагов впереди —
-      ничего сложного, разберёмся вместе.
+      Спасибо за ответы! У нас есть ещё несколько шагов впереди — ничего сложного, разберёмся вместе.
 
       Вот как выглядит весь путь:
       <b>1. Доступ к платформе</b> — 1 день после оплаты
@@ -207,6 +218,7 @@ screens:
   - id: e1_1
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-1-key-at-gate.jpg"
     text: >-
       {{#if isReturning}}Вы уже учились у нас, так что войти можно
       по прежним данным. Получилось?{{else}}Вам должны были прислать
@@ -222,6 +234,7 @@ screens:
   - id: e1_2
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-2-lost-mail-search.jpg"
     text: >-
       Такие письма иногда улетают в спам. Загляните в папку «Спам» —
       возможно, оно там.
@@ -234,17 +247,19 @@ screens:
   - id: e1_2a
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-2-lost-mail-search.jpg"
     text: >-
       Похоже, письмо не приходило. Не переживайте — служба
       сопровождения поможет разобраться, она уже видит, на каком вы шаге.
     buttons:
-      - { label: "Написать в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Написать в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
       - { label: "Я разберусь позже", data: e1_2a.later, next: e2_0 }
     menu: true
 
   - id: e1_3
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-3-gate-opens.jpg"
     text: "Теперь попробуйте войти на платформу по этим данным. Получилось?"
     buttons:
       - { label: "Да, я внутри", data: e1_3.yes, next: e1_5 }
@@ -255,6 +270,7 @@ screens:
   - id: e1_4
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-4-diagnostics-panel.jpg"
     text: "Расскажите, что не так — так будет проще помочь."
     buttons:
       - { label: "Не подходит пароль", data: e1_4.password, next: e1_4_password }
@@ -266,30 +282,34 @@ screens:
   - id: e1_4_password
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-4-fix-on-site.jpg"
     text: "✎ Попробуйте нажать «Забыли пароль» на странице входа — новый придёт на ту же почту."
     buttons:
       - { label: "Да", data: e1_4_password.yes, next: e1_5 }
-      - { label: "Нет, напишу в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Нет, напишу в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
 
   - id: e1_4_page
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-4-fix-on-site.jpg"
     text: "✎ Попробуйте обновить страницу или открыть её в другом браузере — обычно это помогает."
     buttons:
       - { label: "Да", data: e1_4_page.yes, next: e1_5 }
-      - { label: "Нет, напишу в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Нет, напишу в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
 
   - id: e1_4_confused
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-4-fix-on-site.jpg"
     text: "✎ После входа найдите и нажмите на плитку в центре экрана — это и есть вход в Город."
     buttons:
       - { label: "Да", data: e1_4_confused.yes, next: e1_5 }
-      - { label: "Нет, напишу в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Нет, напишу в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
 
   - id: e1_5
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-5-first-city-reveal.jpg"
     text: "Вот вы и в Городе — так выглядит платформа изнутри. Как вам первое впечатление?"
     buttons:
       - { label: "Нравится", data: e1_5.like, next: e1_6 }
@@ -299,6 +319,7 @@ screens:
   - id: e1_5b
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-5b-thought-bubble.jpg"
     text: "Что смущает? Опишите в двух словах — учтём."
     input:
       field: city_feedback
@@ -308,6 +329,7 @@ screens:
   - id: e1_5c
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-5c-lighthouse-guide.jpg"
     text: >-
       Спасибо за отзыв! Освоиться помогает экскурсия по Городу —
       пройдите её вместе с героем, будет проще.
@@ -317,6 +339,7 @@ screens:
   - id: e1_6
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-6-school-building.jpg"
     text: >-
       Зайдите в здание «<b>Школа</b>» → кабинет «Информация для старта» —
       там весь гайд по обучению: как устроена платформа, сроки
@@ -340,6 +363,7 @@ screens:
   - id: e1_7
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
+    image: "shots/e1-7-access-open.jpg"
     text: >-
       ✦ <b>Доступ открыт.</b> Вы разобрались, как всё устроено, —
       ваш герой готов приступить к занятиям.
@@ -351,15 +375,13 @@ screens:
   - id: e2_0
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-0-two-archways.jpg"
     text: |-
-      Переходим к официальному зачислению — рекомендуем уложиться
-      в 10 дней. Не потому что что-то пропадёт, а потому что справка
-      готовится не мгновенно.
+      Переходим к официальному зачислению — рекомендуем уложиться в 10 дней. Не потому что что-то пропадёт, а потому что справка готовится не мгновенно.
 
       Дальше вас ждут два этапа:
       <b>1. Личные документы</b> — то, что нужно отправить от вас.
-      <b>2. Документы для зачисления</b> — их пришлёт и оформит
-      с вами сама школа.
+      <b>2. Подписание документов со школой</b> — школа пришлёт документы, вам останется их подписать.
 
       Расскажу подробно про каждый — начнём с первого.
     buttons:
@@ -370,6 +392,7 @@ screens:
   - id: e2_1
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-1-document-scroll.jpg"
     text: "Вам должно было прийти письмо со списком необходимых документов. Оно пришло?"
     buttons:
       - { label: "Да", data: e2_1.yes, next: e2_2 }
@@ -380,6 +403,7 @@ screens:
   - id: e2_1_spam
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e1-2-lost-mail-search.jpg"
     text: >-
       Такие письма иногда улетают в спам. Загляните в папку «Спам» —
       возможно, оно там.
@@ -391,17 +415,19 @@ screens:
   - id: e2_1_kc
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e1-2-lost-mail-search.jpg"
     text: >-
       Похоже, письмо не приходило. Не переживайте — служба
       сопровождения поможет разобраться, она уже видит, на каком вы шаге.
     buttons:
-      - { label: "Написать в КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Написать в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
       - { label: "Я разберусь позже", data: e2_1_kc.later, next: e2_2 }
     menu: true
 
   - id: e2_2
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-2-mail-drone.jpg"
     text: >-
       {{#if isReturning}}Раз вы уже учились у нас, нужны только
       недостающие документы — то, чего не хватало в прошлый раз.
@@ -416,6 +442,7 @@ screens:
   - id: e2_2a
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-2a-checklist-question.jpg"
     text: "Расскажите, что мешает — разберёмся вместе."
     buttons:
       - { label: "Не хватает документа", data: e2_2a.missing_doc, next: e2_2a_missing }
@@ -426,17 +453,19 @@ screens:
   - id: e2_2a_missing
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-2a-document-sorting.jpg"
     text: >-
       ✎ Часто дело в мелочах: документ оформлен не на того родителя,
       нет прописки, устаревшее фото. Если не ваш случай —
-      поможем разобраться в КС.
+      поможем разобраться в клиентском сервисе.
     buttons:
       - { label: "Разобрался", data: e2_2a_missing.ok, next: e2_2 }
-      - { label: "Нужна помощь КС", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+      - { label: "Нужна помощь клиентского сервиса", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
 
   - id: e2_2a_list
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-2a-document-sorting.jpg"
     text: |-
       Вот что нужно сделать:
       1) Откройте письмо со списком документов.
@@ -448,10 +477,11 @@ screens:
   - id: e2_2a_where
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-2a-document-sorting.jpg"
     text: |-
       Вот куда их отправить:
-      1) Зайдите в Секретариат.
-      2) Откройте «Загрузка документов».
+      1) Зайдите в <b>Секретариат</b>.
+      2) Откройте «<b>Загрузка документов</b>».
       3) Прикрепите файлы и нажмите «Отправить».
     buttons:
       - { label: "Понятно", data: e2_2a_where.ok, next: e2_2 }
@@ -459,6 +489,7 @@ screens:
   - id: e2_2a_time
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-2a-document-sorting.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
       - { label: "Напомнить завтра", data: e2_2a_time.tomorrow, next: e2_2 }
@@ -467,6 +498,7 @@ screens:
   - id: e2_3
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-3-school-envelope.jpg"
     text: >-
       Теперь очередь школы: её документы на подпись должны были прийти
       вам отдельным письмом. Уже пришли?
@@ -478,6 +510,7 @@ screens:
   - id: e2_3_wait
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-wait-countdown.jpg"
     text: "Хорошо, они придут следующим письмом — я напомню, когда стоит проверить снова."
     buttons:
       - { label: "Хорошо", data: e2_3_wait.ok, next: e2_3 }
@@ -485,7 +518,11 @@ screens:
   - id: e2_4
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    text: "Подпишите документы школы и отправьте их обратно. Уже готово?"
+    image: "shots/e2-4-glowing-quill.jpg"
+    text: |-
+      Подпишите документы. Отправьте сканированные копии или качественные фотографии через кнопку из письма.
+
+      <i>Не отправляйте ответным письмом — мы не сможем их получить.</i>
     buttons:
       - { label: "Да", data: e2_4.yes, next: e2_5 }
       - { label: "Ещё нет", data: e2_4.no, next: e2_4_wait }
@@ -494,6 +531,7 @@ screens:
   - id: e2_4_wait
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
+    image: "shots/e2-wait-countdown.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
       - { label: "Напомнить завтра", data: e2_4_wait.tomorrow, next: e2_4 }
@@ -502,9 +540,10 @@ screens:
   - id: e2_5
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    text: |-
-      Готово! Дальше всё делаем мы: справка появится в Секретариате →
-      «Справки». Готовится 3 дня после подачи, но не раньше 10 сентября —
+    image: "shots/e2-5-archive-tower.jpg"
+    text: >-
+      Готово! Дальше всё делаем мы: справка появится в <b>Секретариате</b> →
+      «<b>Справки</b>». Готовится 3 дня после подачи, но не раньше <b>10 сентября</b> —
       скачивать ничего не нужно, просто держите это в уме.
     buttons:
       - { label: "Что дальше?", data: e2_5.next, next: e2_6 }
@@ -513,7 +552,8 @@ screens:
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
     terminal: true
-    text: |-
+    image: "shots/e2-6-path-open.jpg"
+    text: >-
       ✦ <b>Путь открыт.</b> Два шага из шести позади — и это были
       самые срочные. Дальше год спокойный: я сам напомню про
       аттестации и справку, когда придёт время.

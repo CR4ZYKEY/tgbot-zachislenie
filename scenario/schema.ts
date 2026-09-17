@@ -99,6 +99,9 @@ export type Screen = z.infer<typeof ScreenSchema>;
 // text — обязателен (правило 1 CLAUDE.md), buttons — опциональны.
 export const SystemScreenSchema = z.object({
   text: z.string().min(1),
+  // Путь к картинке-заглушке (сейчас — "раздел в разработке" на in_progress),
+  // тот же формат и то же место хранения (assets/shots), что у ScreenSchema.
+  image: z.string().optional(),
   buttons: z.array(ButtonSchema).max(4).optional(),
 });
 export type SystemScreen = z.infer<typeof SystemScreenSchema>;

@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
-import type { Context } from 'grammy';
+import { InputFile } from 'grammy';
+import type { Context, InlineKeyboard } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
@@ -24,6 +25,12 @@ function isSystemKey(t: string): t is SystemScreenKey {
 @Injectable()
 export class EngineService {
   private readonly logger = new Logger(EngineService.name);
+
+  // Telegram отдаёт file_id после первой успешной загрузки — дальше та же
+  // картинка шлётся им, без повторной заливки байтов. Кэш живёт в памяти
+  // процесса (сбрасывается рестартом `bot`), ключ — путь картинки на диске,
+  // общий для всех пользователей, т.к. сама картинка от них не зависит.
+  private readonly photoFileIds = new Map<string, string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -103,24 +110,51 @@ export class EngineService {
       extraButtons: [...(screen.deferButton ? [screen.deferButton] : []), ...(opts.extraButtons ?? [])],
     });
 
-    if (screen.image) {
-      const assetPath = resolve(process.cwd(), 'assets', screen.image.replace(/^✎\s*/, ''));
-      if (existsSync(assetPath)) {
-        await ctx.replyWithPhoto(assetPath);
-      } else {
-        this.logger.warn(`Скриншот для экрана "${screen.id}" не найден: ${assetPath} (черновой путь в сценарии)`);
-      }
-    }
-
     const chatId = ctx.chat!.id;
-    // parse_mode HTML — сценарий может выделять важное <b>жирным</b> прямо
-    // в тексте (см. scenario.yaml). HTML выбран вместо MarkdownV2, потому
-    // что не требует экранирования пунктуации («», →, . и т.п.), которой
-    // в текстах много.
-    const sent = await ctx.api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
+    const assetPath = this.resolveAsset(screen.image, `экрана "${screen.id}"`);
+    const sent = await this.sendTextOrPhoto(ctx, chatId, assetPath, text, kb);
     if (sent.message_id !== updated.lastMessageId) {
       await this.prisma.user.update({ where: { id: updated.id }, data: { lastMessageId: sent.message_id } });
     }
+  }
+
+  // Путь к скриншоту/иллюстрации экрана или оверлея → абсолютный путь на
+  // диске, либо undefined, если картинки нет или файл ещё не завезли
+  // (черновой путь с ведущим ✎, см. комментарий вверху scenario.yaml).
+  private resolveAsset(image: string | undefined, contextLabel: string): string | undefined {
+    if (!image) return undefined;
+    const candidate = resolve(process.cwd(), 'assets', image.replace(/^✎\s*/, ''));
+    if (existsSync(candidate)) return candidate;
+    this.logger.warn(`Картинка для ${contextLabel} не найдена: ${candidate} (черновой путь в сценарии)`);
+    return undefined;
+  }
+
+  // Общая точка отправки для обычных экранов (render) и оверлеев (showOverlay):
+  // с картинкой — одно сообщение "фото с подписью" (правило "одно сообщение —
+  // один вопрос", CLAUDE.md, caption ограничен Telegram 1024 символами — при
+  // 2–4 строках текста экрана не проблема); без картинки — обычный текст.
+  // parse_mode HTML — сценарий выделяет важное <b>жирным</b> прямо в тексте
+  // (см. scenario.yaml); HTML вместо MarkdownV2, чтобы не экранировать
+  // пунктуацию («», →, тире), которой в текстах много.
+  private async sendTextOrPhoto(
+    ctx: Context,
+    chatId: number,
+    assetPath: string | undefined,
+    text: string,
+    kb: InlineKeyboard,
+  ): Promise<{ message_id: number }> {
+    if (!assetPath) {
+      return ctx.api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
+    }
+    // Уже заливали эту картинку с этого процесса — шлём по file_id, без
+    // повторной загрузки байтов (иначе каждый показ экрана переливал бы
+    // мегабайты заново, отсюда и заметная задержка).
+    const cached = this.photoFileIds.get(assetPath);
+    const photo = cached ?? new InputFile(assetPath);
+    const sent = await ctx.api.sendPhoto(chatId, photo, { caption: text, reply_markup: kb, parse_mode: 'HTML' });
+    const newFileId = sent.photo.at(-1)?.file_id;
+    if (newFileId && newFileId !== cached) this.photoFileIds.set(assetPath, newFileId);
+    return sent;
   }
 
   // Оверлеи (меню/КС/устаревшая кнопка/...) — всегда отдельное всплывающее
@@ -150,7 +184,8 @@ export class EngineService {
         // Сообщение могли удалить руками или оно устарело для удаления — не критично.
       });
     }
-    const sent = await ctx.api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
+    const assetPath = this.resolveAsset(sys.image, `оверлея "${key}"`);
+    const sent = await this.sendTextOrPhoto(ctx, chatId, assetPath, text, kb);
     // overlayBackTarget перезаписывается на каждый показ — иначе значение от
     // предыдущего оверлея (например, "menu" от КС) протекло бы в следующий
     // (скажем, в stale), и его "← Назад" вело бы не туда.
