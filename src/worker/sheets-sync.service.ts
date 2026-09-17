@@ -65,6 +65,10 @@ const HEADER = [
 ];
 const SHEET_RANGE_ALL = 'A2:O';
 const SHEET_HEADER_RANGE = 'A1:O1';
+// Справочная колонка со человекочитаемой расшифровкой stage — на одну
+// колонку правее последней рабочей (O), никогда не читается синхронизацией.
+const LABEL_COLUMN = 'P';
+const LABEL_COLUMN_HEADER = 'Экран — о чём он (только для чтения, не редактировать)';
 
 // Хеш считается ОДНИМ И ТЕМ ЖЕ способом — от канонического массива строк
 // (13 бизнес-столбцов, без id/tgId), а не от JS-объекта. Иначе хеш строки
@@ -107,12 +111,28 @@ function formatMoscowTime(d: Date): string {
 }
 
 // Первая строка экрана — короткий, человекочитаемый контекст рядом с
-// техническим screen_id, чтобы в "Ответы" не приходилось помнить, что такое
-// "e2_2a_missing". Шаблонные {{...}} вырезаем — движковую разметку читать незачем.
+// техническим screen_id, чтобы не приходилось помнить, что такое
+// "e2_2a_missing". Шаблонные {{...}} и HTML-разметку (<b>...</b>) вырезаем —
+// движковую разметку читать незачем.
 function screenGist(text: string): string {
   const firstLine = text.split('\n')[0];
-  const withoutTemplate = firstLine.replace(/\{\{[^}]*\}\}/g, '').trim();
-  return withoutTemplate.length > 70 ? `${withoutTemplate.slice(0, 67)}...` : withoutTemplate;
+  const plain = firstLine.replace(/\{\{[^}]*\}\}/g, '').replace(/<[^>]+>/g, '').trim();
+  return plain.length > 70 ? `${plain.slice(0, 67)}...` : plain;
+}
+
+// Человекочитаемая расшифровка stage-кода — только для чтения, нигде не
+// парсится обратно. Используется и в справочной колонке листа пользователей,
+// и на вкладке "Статистика". Экран мог исчезнуть из текущей версии сценария
+// (правки после того, как строка синхронизировалась) — тогда просто голый id.
+function makeScreenLabel(scenario: ScenarioService): (screenId: string) => string {
+  return (screenId: string): string => {
+    if (!screenId) return '';
+    try {
+      return `${screenId} — ${screenGist(scenario.getScreen(screenId).text)}`;
+    } catch {
+      return screenId;
+    }
+  };
 }
 
 @Injectable()
@@ -124,6 +144,9 @@ export class SheetsSyncService implements OnModuleInit {
   private answersSheetName = 'Ответы';
   private statsSheetName = STATS_SHEET_NAME_DEFAULT;
   private enabled = false;
+  // Заполняется в onModuleInit, когда this.scenario уже доступен — обычной
+  // стрелочной функции с this в конструкторе тут не получится.
+  private screenLabel: (screenId: string) => string = (id) => id;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -147,6 +170,7 @@ export class SheetsSyncService implements OnModuleInit {
 
     const auth = new JWT({ email: clientEmail, key: privateKey, scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
     this.sheets = google.sheets({ version: 'v4', auth });
+    this.screenLabel = makeScreenLabel(this.scenario);
     this.enabled = true;
     this.logger.log(
       `Sheets-синхронизация включена: таблица ${this.spreadsheetId}, лист "${this.sheetName}" + лог ответов "${this.answersSheetName}"`,
@@ -299,29 +323,45 @@ export class SheetsSyncService implements OnModuleInit {
       friction.set(a.screenId, f);
     }
 
+    // Колонка A везде — короткий screen_id: это и есть подпись графика, длинную
+    // расшифровку туда сажать нельзя (подписи под столбцами станут нечитаемы).
+    // Описание — отдельной колонкой B, для человека, не для графика.
     const rows: string[][] = [
-      [`Обновлено: ${formatMoscowTime(new Date())}`, '', ''],
+      [`Обновлено: ${formatMoscowTime(new Date())}`],
       [''],
-      [`1. Где сейчас стоят родители (всего: ${totalUsers})`, '', ''],
-      ['Экран', 'Сейчас на нём', '% от всех'],
-      ...byStage
-        .sort((a, b) => b._count._all - a._count._all)
-        .map((r) => [r.stage, String(r._count._all), totalUsers ? `${Math.round((r._count._all / totalUsers) * 100)}%` : '0%']),
+      [`1. Где сейчас стоят родители (всего: ${totalUsers})`],
+      ['Экран', 'Описание', 'Сейчас на нём', '% от всех'],
+    ];
+    const sortedByStage = [...byStage].sort((a, b) => b._count._all - a._count._all);
+    // Диапазон нужен графику ниже — считаем его тут же, а не пересчитываем
+    // вручную по номерам строк (сдвинулись бы при любой правке текста выше).
+    const byStageStartRow = rows.length; // 0-индексация Sheets API
+    for (const r of sortedByStage) {
+      rows.push([r.stage, this.screenLabel(r.stage), String(r._count._all), totalUsers ? `${Math.round((r._count._all / totalUsers) * 100)}%` : '0%']);
+    }
+    const byStageEndRow = rows.length; // конец диапазона исключительно (endRowIndex)
+
+    rows.push(
       [''],
-      ['2. Трафик по экранам (сколько раз вообще отвечали)', '', ''],
-      ['Экран', 'Ответов', ''],
-      ...[...traffic.entries()].sort((a, b) => b[1] - a[1]).map(([screenId, count]) => [screenId, String(count), '']),
+      ['2. Трафик по экранам (сколько раз вообще отвечали)'],
+      ['Экран', 'Описание', 'Ответов', ''],
+      ...[...traffic.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([screenId, count]) => [screenId, this.screenLabel(screenId), String(count), '']),
       [''],
-      ['3. Проблемные экраны (доля ответов "Нет / Не получается / не понял / в КС")', '', ''],
-      ['Экран', 'Проблемных / всего', '% проблемных'],
+      ['3. Проблемные экраны (доля ответов "Нет / Не получается / не понял / в КС")'],
+      ['Экран', 'Описание', 'Проблемных / всего', '% проблемных'],
       ...[...friction.entries()]
         .filter(([, v]) => v.friction > 0)
         .sort((a, b) => b[1].friction / b[1].total - a[1].friction / a[1].total)
-        .map(([screenId, v]) => [screenId, `${v.friction}/${v.total}`, `${Math.round((v.friction / v.total) * 100)}%`]),
-    ];
+        .map(([screenId, v]) => [screenId, this.screenLabel(screenId), `${v.friction}/${v.total}`, `${Math.round((v.friction / v.total) * 100)}%`]),
+    );
 
     // Сначала чистим весь лист — иначе при уменьшении отчёта (например, после
     // "газ с начала") снизу остались бы старые строки от прошлого прогона.
+    // clear() трогает только значения ячеек — встроенные графики остаются
+    // на месте, поэтому график ниже обновляется в ту же диаграмму, а не
+    // плодит новую на каждом тике.
     await this.sheets!.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: this.statsSheetName });
     await this.sheets!.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
@@ -334,10 +374,86 @@ export class SheetsSyncService implements OnModuleInit {
       await this.sheets!.spreadsheets.batchUpdate({
         spreadsheetId: this.spreadsheetId,
         requestBody: {
-          requests: [{ autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 3 } } }],
+          requests: [{ autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 4 } } }],
         },
       });
+      await this.ensureStatsChart(sheetId, byStageStartRow, byStageEndRow);
     }
+  }
+
+  // Столбчатая диаграмма "где сейчас родители" — чтобы распределение было
+  // видно сразу, без чтения таблицы построчно. Идемпотентно: ищет диаграмму
+  // с тем же заголовком в метаданных листа и обновляет её диапазон (данные
+  // каждый тик пересчитываются, число активных экранов может меняться), а
+  // не добавляет новую — иначе на вкладке копились бы дубли раз в минуту.
+  private async ensureStatsChart(sheetId: number, dataStartRow: number, dataEndRow: number): Promise<void> {
+    // Пустая группировка (например, сразу после "газ с начала", пока никто
+    // не написал боту) — графику нечего показывать, тихо выходим.
+    if (dataEndRow <= dataStartRow) return;
+
+    const chartTitle = 'Где сейчас родители (по экранам)';
+    const spec: sheets_v4.Schema$ChartSpec = {
+      title: chartTitle,
+      basicChart: {
+        chartType: 'COLUMN',
+        legendPosition: 'NO_LEGEND',
+        headerCount: 0,
+        axis: [
+          { position: 'BOTTOM_AXIS', title: 'Экран' },
+          { position: 'LEFT_AXIS', title: 'Родителей' },
+        ],
+        domains: [
+          {
+            domain: {
+              sourceRange: {
+                sources: [{ sheetId, startRowIndex: dataStartRow, endRowIndex: dataEndRow, startColumnIndex: 0, endColumnIndex: 1 }],
+              },
+            },
+          },
+        ],
+        series: [
+          {
+            series: {
+              sourceRange: {
+                sources: [{ sheetId, startRowIndex: dataStartRow, endRowIndex: dataEndRow, startColumnIndex: 2, endColumnIndex: 3 }],
+              },
+            },
+            targetAxis: 'LEFT_AXIS',
+          },
+        ],
+      },
+    };
+
+    const meta = await this.sheets!.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      ranges: [this.statsSheetName],
+      fields: 'sheets(charts(chartId,spec.title))',
+    });
+    const existingChartId = meta.data.sheets?.[0]?.charts?.find((c) => c.spec?.title === chartTitle)?.chartId;
+
+    await this.sheets!.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          existingChartId != null
+            ? { updateChartSpec: { chartId: existingChartId, spec } }
+            : {
+                addChart: {
+                  chart: {
+                    spec,
+                    position: {
+                      overlayPosition: {
+                        anchorCell: { sheetId, rowIndex: 0, columnIndex: 5 },
+                        widthPixels: 640,
+                        heightPixels: 360,
+                      },
+                    },
+                  },
+                },
+              },
+        ],
+      },
+    });
   }
 
   // Создаёт вкладку в таблице, если её ещё нет, пишет заголовок в пустую
@@ -444,6 +560,34 @@ export class SheetsSyncService implements OnModuleInit {
         requestBody: { values: [HEADER] },
       });
     }
+    // Справочная колонка P — намеренно ВНЕ HEADER/SHEET_RANGE_ALL: она не
+    // читается обратно в readSheetRows/parseRow и не входит в hashOfCells,
+    // поэтому не может повлиять на двустороннюю синхронизацию, даже если
+    // кто-то впишет в неё что-то руками. Только расшифровка stage для чтения.
+    const labelHeader = await this.sheets!.spreadsheets.values.get({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.sheetName}!${LABEL_COLUMN}1`,
+    });
+    if (!labelHeader.data.values?.length) {
+      await this.sheets!.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `${this.sheetName}!${LABEL_COLUMN}1`,
+        valueInputOption: 'RAW',
+        requestBody: { values: [[LABEL_COLUMN_HEADER]] },
+      });
+    }
+  }
+
+  // Не часть round-trip: отдельный вызов после appendRow/writeRow, только
+  // для удобства чтения человеком. rowNumber всегда известен вызывающей
+  // стороне (append — из ответа API, write — уже был известен заранее).
+  private async writeLabelCell(rowNumber: number, stage: string): Promise<void> {
+    await this.sheets!.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.sheetName}!${LABEL_COLUMN}${rowNumber}`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [[this.screenLabel(stage)]] },
+    });
   }
 
   private async readSheetRows(): Promise<Array<{ id: string; rowNumber: number; tgId: string; cells: string[]; hash: string }>> {
@@ -534,12 +678,16 @@ export class SheetsSyncService implements OnModuleInit {
   }
 
   private async appendRow(id: string, tgId: string, f: EditableFields): Promise<void> {
-    await this.sheets!.spreadsheets.values.append({
+    const res = await this.sheets!.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
       range: `${this.sheetName}!A:O`,
       valueInputOption: 'RAW',
       requestBody: { values: [this.rowValues(id, tgId, f)] },
     });
+    // updatedRange выглядит как "Users!A5:O5" — оттуда достаём номер строки,
+    // чтобы поставить расшифровку в ту же строку колонки P.
+    const match = res.data.updates?.updatedRange?.match(/(\d+):/);
+    if (match) await this.writeLabelCell(Number(match[1]), f.stage);
   }
 
   private async writeRow(rowNumber: number, id: string, tgId: string, f: EditableFields): Promise<void> {
@@ -549,5 +697,6 @@ export class SheetsSyncService implements OnModuleInit {
       valueInputOption: 'RAW',
       requestBody: { values: [this.rowValues(id, tgId, f)] },
     });
+    await this.writeLabelCell(rowNumber, f.stage);
   }
 }
