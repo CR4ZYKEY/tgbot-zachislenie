@@ -16,7 +16,14 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     const token = process.env.BOT_TOKEN;
     if (!token) throw new Error('BOT_TOKEN не задан (см. .env.example)');
 
-    this.bot = new Bot(token);
+    // timeoutSeconds: у grammY по умолчанию 500 секунд на запрос. Само
+    // ожидание апдейтов длится 30 секунд, так что 500 — это не про
+    // нормальную работу, а про зависший запрос: если соединение тихо
+    // умирает (после простоя это делает почти любой NAT), бот больше восьми
+    // минут выглядит мёртвым, ничего не пишет в лог, а апдейты копятся у
+    // Telegram. Ровно этот симптом и ловили. 60 секунд — потолок, после
+    // которого grammY обрывает запрос и переспрашивает.
+    this.bot = new Bot(token, { client: { timeoutSeconds: 60 } });
 
     this.bot.command('start', async (ctx) => {
       await this.engine.start(ctx, BigInt(ctx.from!.id));

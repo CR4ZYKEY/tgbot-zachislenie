@@ -39,7 +39,10 @@ export class RemindersService {
   ) {
     const token = process.env.BOT_TOKEN;
     if (!token) throw new Error('BOT_TOKEN не задан (см. .env.example)');
-    this.api = new Api(token);
+    // Таймаут по той же причине, что и у бота (см. bot.service.ts): дефолтные
+    // 500 секунд означают, что одна зависшая отправка держала бы весь тик
+    // воркера почти девять минут.
+    this.api = new Api(token, { timeoutSeconds: 60 });
   }
 
   async processDue(now = new Date()): Promise<void> {
