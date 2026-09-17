@@ -595,7 +595,7 @@ screens:
 
       <i>Не отправляйте ответным письмом — мы не сможем их получить.</i>
     buttons:
-      - { label: "Да", data: e2_4.yes, next: e2_5 }
+      - { label: "Направил", data: e2_4.yes, next: e2_5 }
       - { label: "Ещё нет", data: e2_4.no, next: e2_4_wait }
     menu: true
 
