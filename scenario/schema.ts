@@ -61,6 +61,30 @@ export const FreeInputSchema = z.object({
 });
 export type FreeInput = z.infer<typeof FreeInputSchema>;
 
+// Напоминания, привязанные к экрану-«ожиданию»: ставятся в очередь `jobs`,
+// как только родитель на этот экран попадает, и снимаются сами, как только
+// он из зоны ожидания вышел (значит вопрос уже решён). Относительный триггер
+// по модели напоминаний из CLAUDE.md: отсчёт от действия родителя, а не от
+// даты когорты. Живёт в сценарии, а не в коде, чтобы сроки и тексты правились
+// в одном месте (правило 1 CLAUDE.md).
+export const ReminderSchema = z.object({
+  // Через сколько часов после попадания на экран. Для ручных прогонов сутки
+  // сжимаются переменной REMINDER_TEST_MINUTES — см. screen-renderer.service.ts.
+  afterHours: z.number().positive(),
+  // Какой экран показать. Каждое напоминание — свой экран со своим текстом:
+  // повторять слово в слово нельзя, иначе выглядит как сбой рассылки.
+  screen: z.string().regex(idRegex),
+});
+export type Reminder = z.infer<typeof ReminderSchema>;
+
+export const RemindersSchema = z.object({
+  // Пока родитель на любом из этих экранов — вопрос ещё открыт. Ушёл дальше
+  // (подтвердил, что письмо пришло) — оставшиеся напоминания отменяются.
+  waitingScreens: z.array(z.string().regex(idRegex)).min(1),
+  schedule: z.array(ReminderSchema).min(1),
+});
+export type Reminders = z.infer<typeof RemindersSchema>;
+
 export const ScreenSchema = z.object({
   id: z.string().regex(idRegex, 'screen_id: только a-z0-9_.'),
   // Этап для префикса «Шаг N из 6 · Название этапа» и для группировки в /status.
@@ -92,6 +116,9 @@ export const ScreenSchema = z.object({
   // появления этапов 3–6). "Статус зачисления" из меню на таком экране
   // показывает system.status_complete вместо повтора самого экрана.
   terminal: z.boolean().optional(),
+  // Экран-«ожидание»: попав сюда, родитель получает напоминания по расписанию
+  // (см. ReminderSchema). Обрабатывает воркер, не бот.
+  reminders: RemindersSchema.optional(),
 });
 export type Screen = z.infer<typeof ScreenSchema>;
 
@@ -214,6 +241,36 @@ export const ScenarioSchema = z
         }
       }
       checkScreenRefs(`Экран "${screen.id}"`, screen.buttons, extra);
+
+      // Напоминания: и экран напоминания, и вся зона ожидания должны
+      // существовать. Опечатка тут тише всех прочих — воркер молча не нашёл
+      // бы экран через сутки после действия родителя, уже без свидетелей.
+      if (screen.reminders) {
+        for (const [i, r] of screen.reminders.schedule.entries()) {
+          if (!ids.has(r.screen)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Экран "${screen.id}": reminders.schedule[${i}].screen ссылается на несуществующий screen_id "${r.screen}"`,
+            });
+          }
+        }
+        for (const w of screen.reminders.waitingScreens) {
+          if (!ids.has(w)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: `Экран "${screen.id}": reminders.waitingScreens содержит несуществующий screen_id "${w}"`,
+            });
+          }
+        }
+        // Сам экран-ожидание обязан быть в зоне ожидания: иначе первое же
+        // напоминание отменится как «родитель уже ушёл дальше».
+        if (!screen.reminders.waitingScreens.includes(screen.id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Экран "${screen.id}": сам экран должен быть в reminders.waitingScreens, иначе напоминания отменятся сразу же`,
+          });
+        }
+      }
     }
 
     for (const key of SYSTEM_SCREEN_KEYS) {

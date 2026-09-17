@@ -9,8 +9,12 @@ import { WorkerModule } from './worker.module';
 
 async function bootstrap() {
   await NestFactory.createApplicationContext(WorkerModule);
-  console.log('✓ Воркер поднят. Обработчик очереди jobs ещё не реализован (см. TODO в worker.module.ts).');
-  // TODO: при старте разобрать просроченные задачи из таблицы jobs, затем тик раз в минуту.
+  const testMinutes = process.env.REMINDER_TEST_MINUTES;
+  console.log(
+    testMinutes
+      ? `✓ Воркер поднят. ВНИМАНИЕ: тестовый режим напоминаний — сутки сжаты до ${testMinutes} мин (REMINDER_TEST_MINUTES).`
+      : '✓ Воркер поднят. Очередь напоминаний разбирается раз в минуту.',
+  );
 }
 
 bootstrap();

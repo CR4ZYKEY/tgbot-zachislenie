@@ -1,56 +1,34 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { existsSync } from 'fs';
-import { resolve } from 'path';
-import { InputFile } from 'grammy';
-import type { Context, InlineKeyboard } from 'grammy';
+import type { Context } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
+import { ScreenRendererService } from '../render/screen-renderer.service';
 import { Button, SYSTEM_SCREEN_KEYS, SystemScreenKey } from '../../scenario/schema';
-import { renderTemplate, TemplateVars } from './template.util';
-import { buildScreenKeyboard, buildSystemKeyboard, decodeCallback } from './keyboard.util';
+import { renderTemplate } from '../render/template.util';
+import { buildSystemKeyboard, decodeCallback } from '../render/keyboard.util';
 import { normalizePhone } from './phone.util';
 import { sanitizeFreeText } from './sanitize.util';
-
-const HISTORY_LIMIT = 50;
 
 function isSystemKey(t: string): t is SystemScreenKey {
   return (SYSTEM_SCREEN_KEYS as readonly string[]).includes(t);
 }
 
-// Движок диалога: рендер экрана из YAML, обработка callback, запись ответа,
-// переход. Единственное место, где сценарий встречается с Telegram API.
-// Ничего пользовательского текста здесь не хардкодится — только то, что
-// лежит в scenario.yaml (правило 1 CLAUDE.md).
+// Движок диалога: обработка callback и свободного ввода, запись ответа,
+// переход между экранами. Сам показ экрана — в ScreenRendererService, он же
+// общий с воркером напоминаний. Ничего пользовательского текста здесь не
+// хардкодится — только то, что лежит в scenario.yaml (правило 1 CLAUDE.md).
 @Injectable()
 export class EngineService {
   private readonly logger = new Logger(EngineService.name);
 
-  // Telegram отдаёт file_id после первой успешной загрузки — дальше та же
-  // картинка шлётся им, без повторной заливки байтов. Кэш живёт в памяти
-  // процесса (сбрасывается рестартом `bot`), ключ — путь картинки на диске,
-  // общий для всех пользователей, т.к. сама картинка от них не зависит.
-  private readonly photoFileIds = new Map<string, string>();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly scenario: ScenarioService,
+    // Сам показ экрана живёт в общем сервисе: тем же кодом воркер шлёт
+    // напоминания, иначе тексты и версии кнопок разъехались бы.
+    private readonly renderer: ScreenRendererService,
   ) {}
-
-  private buildVars(user: User): TemplateVars {
-    return {
-      isReturning: user.isReturning ?? false,
-      class: user.class,
-      name: user.name,
-    };
-  }
-
-  private urlVars(user: User): TemplateVars {
-    return {
-      kc_username: process.env.KC_BOT_USERNAME ?? 'help_bot',
-      kc_context: `step_${user.stage}`,
-    };
-  }
 
   async getOrCreateUser(tgId: bigint): Promise<User> {
     const existing = await this.prisma.user.findUnique({ where: { tgId } });
@@ -65,96 +43,16 @@ export class EngineService {
     await this.render(ctx, user, user.stage, { pushHistory: false });
   }
 
-  // Переход на реальный экран сценария: двигает stage, ведёт историю для
-  // "← Назад", сбрасывает счётчик попыток телефона — но только если экран
-  // реально меняется, а не перерисовывается тем же (иначе кнопка «Пропустить»
-  // на S2b теряет свой счётчик до того, как на неё успевают нажать).
-  //
-  // Каждый переход — НОВОЕ сообщение (п.о просьбе заказчика: история должна
-  // сохраняться целиком, а не стираться правкой в одном и том же сообщении).
-  // Раньше редактирование на месте внутри одной группы экранов съедало
-  // собственные заголовки/кнопки промежуточных шагов — их нельзя было
-  // прокрутить и посмотреть заново, что и было главной жалобой.
+  // Показ экрана в ответ на действие родителя. Вся механика (история,
+  // renderVersion, картинка, постановка напоминаний) — в общем рендере,
+  // здесь только достаём из grammY-контекста то, что ему нужно.
   private async render(
     ctx: Context,
     user: User,
     targetScreenId: string,
     opts: { pushHistory: boolean; extraButtons?: Button[] } = { pushHistory: true },
   ): Promise<void> {
-    const screen = this.scenario.getScreen(targetScreenId);
-    const changingScreen = user.stage !== targetScreenId;
-
-    const history = opts.pushHistory && changingScreen
-      ? [...user.historyStack, user.stage].slice(-HISTORY_LIMIT)
-      : user.historyStack;
-
-    const updated = await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        stage: targetScreenId,
-        renderVersion: { increment: 1 },
-        historyStack: history,
-        ...(changingScreen ? { phoneAttempts: 0 } : {}),
-        lastTouchAt: new Date(),
-        consecutiveMisses: 0,
-      },
-    });
-
-    const prefix = screen.stepLabel ? `${screen.stepLabel}\n` : '';
-    const text = prefix + renderTemplate(screen.text, this.buildVars(updated));
-
-    const showBack = Boolean(screen.back) || updated.historyStack.length > 0;
-    const kb = buildScreenKeyboard(screen, updated.renderVersion, {
-      backTarget: showBack ? screen.back ?? updated.historyStack[updated.historyStack.length - 1] : undefined,
-      urlVars: this.urlVars(updated),
-      extraButtons: [...(screen.deferButton ? [screen.deferButton] : []), ...(opts.extraButtons ?? [])],
-    });
-
-    const chatId = ctx.chat!.id;
-    const assetPath = this.resolveAsset(screen.image, `экрана "${screen.id}"`);
-    const sent = await this.sendTextOrPhoto(ctx, chatId, assetPath, text, kb);
-    if (sent.message_id !== updated.lastMessageId) {
-      await this.prisma.user.update({ where: { id: updated.id }, data: { lastMessageId: sent.message_id } });
-    }
-  }
-
-  // Путь к скриншоту/иллюстрации экрана или оверлея → абсолютный путь на
-  // диске, либо undefined, если картинки нет или файл ещё не завезли
-  // (черновой путь с ведущим ✎, см. комментарий вверху scenario.yaml).
-  private resolveAsset(image: string | undefined, contextLabel: string): string | undefined {
-    if (!image) return undefined;
-    const candidate = resolve(process.cwd(), 'assets', image.replace(/^✎\s*/, ''));
-    if (existsSync(candidate)) return candidate;
-    this.logger.warn(`Картинка для ${contextLabel} не найдена: ${candidate} (черновой путь в сценарии)`);
-    return undefined;
-  }
-
-  // Общая точка отправки для обычных экранов (render) и оверлеев (showOverlay):
-  // с картинкой — одно сообщение "фото с подписью" (правило "одно сообщение —
-  // один вопрос", CLAUDE.md, caption ограничен Telegram 1024 символами — при
-  // 2–4 строках текста экрана не проблема); без картинки — обычный текст.
-  // parse_mode HTML — сценарий выделяет важное <b>жирным</b> прямо в тексте
-  // (см. scenario.yaml); HTML вместо MarkdownV2, чтобы не экранировать
-  // пунктуацию («», →, тире), которой в текстах много.
-  private async sendTextOrPhoto(
-    ctx: Context,
-    chatId: number,
-    assetPath: string | undefined,
-    text: string,
-    kb: InlineKeyboard,
-  ): Promise<{ message_id: number }> {
-    if (!assetPath) {
-      return ctx.api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
-    }
-    // Уже заливали эту картинку с этого процесса — шлём по file_id, без
-    // повторной загрузки байтов (иначе каждый показ экрана переливал бы
-    // мегабайты заново, отсюда и заметная задержка).
-    const cached = this.photoFileIds.get(assetPath);
-    const photo = cached ?? new InputFile(assetPath);
-    const sent = await ctx.api.sendPhoto(chatId, photo, { caption: text, reply_markup: kb, parse_mode: 'HTML' });
-    const newFileId = sent.photo.at(-1)?.file_id;
-    if (newFileId && newFileId !== cached) this.photoFileIds.set(assetPath, newFileId);
-    return sent;
+    await this.renderer.renderScreen(ctx.api, ctx.chat!.id, user, targetScreenId, opts);
   }
 
   // Оверлеи (меню/КС/устаревшая кнопка/...) — всегда отдельное всплывающее
@@ -168,13 +66,13 @@ export class EngineService {
   // 1–2) — backTarget не передаётся, поведение как раньше (назад = в поток).
   private async showOverlay(ctx: Context, user: User, key: SystemScreenKey, backTarget?: 'menu'): Promise<void> {
     const sys = this.scenario.system[key];
-    const text = renderTemplate(sys.text, this.buildVars(user));
+    const text = renderTemplate(sys.text, this.renderer.buildVars(user));
     // "stop" — единственное исключение: после него возвращаться уже некуда,
     // данные пользователя удалены. Остальные оверлеи всегда получают
     // "← Назад", если только в самом сценарии уже нет кнопки с тем же
     // смыслом (как "Да, к текущему шагу" на stale) — не дублируем.
     const alreadyHasReturn = sys.buttons?.some((b) => b.next === 'current_screen') ?? false;
-    const kb = buildSystemKeyboard(sys, key, user.renderVersion, this.urlVars(user), {
+    const kb = buildSystemKeyboard(sys, key, user.renderVersion, this.renderer.urlVars(user), {
       includeBack: key !== 'stop' && !alreadyHasReturn,
     });
 
@@ -184,8 +82,8 @@ export class EngineService {
         // Сообщение могли удалить руками или оно устарело для удаления — не критично.
       });
     }
-    const assetPath = this.resolveAsset(sys.image, `оверлея "${key}"`);
-    const sent = await this.sendTextOrPhoto(ctx, chatId, assetPath, text, kb);
+    const assetPath = this.renderer.resolveAsset(sys.image, `оверлея "${key}"`);
+    const sent = await this.renderer.sendTextOrPhoto(ctx.api, chatId, assetPath, text, kb);
     // overlayBackTarget перезаписывается на каждый показ — иначе значение от
     // предыдущего оверлея (например, "menu" от КС) протекло бы в следующий
     // (скажем, в stale), и его "← Назад" вело бы не туда.
