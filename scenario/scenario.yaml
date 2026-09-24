@@ -125,10 +125,16 @@ screens:
     text: "Как к вам обращаться?"
     input:
       field: name
-      next: s2b
+      # ВРЕМЕННО: было next: s2b (шаг с телефоном). По просьбе — телефон
+      # больше не спрашиваем, экран s2b остаётся в файле нетронутым на
+      # случай возврата. Чтобы включить обратно — вернуть next: s2b.
+      next: s3
       validation: none
     back: s1
 
+  # ВРЕМЕННО НЕДОСТИЖИМ: на этот экран больше никто не ведёт (см. s2.input.next
+  # выше) — оставлен как есть на случай, если понадобится вернуть шаг с
+  # телефоном. Сам по себе экран рабочий, просто в него не попасть.
   - id: s2b
     stage: start
     image: "shots/s2b-signal-beacon.jpg"
@@ -148,9 +154,11 @@ screens:
     image: "shots/s3-s3a-cape-choice.jpg"
     text: "Какой пакет вы приобрели?"
     buttons:
-      - { label: "Базовый", data: s3.base, next: s4, setField: { field: package, value: "Базовый" } }
+      # ВРЕМЕННО: было next: s4 (шаг с классом). Класс больше не спрашиваем —
+      # экран s4 остаётся в файле нетронутым, вернуть можно строкой ниже.
+      - { label: "Базовый", data: s3.base, next: s5, setField: { field: package, value: "Базовый" } }
       - { label: "Другой", data: s3.other, next: s3a, setField: { field: package, value: "Другой" } }
-    back: s2b
+    back: s2
 
   - id: s3a
     stage: start
@@ -164,6 +172,9 @@ screens:
       - { label: "Написать в клиентский сервис", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
     back: s3
 
+  # ВРЕМЕННО НЕДОСТИЖИМ: на этот экран больше никто не ведёт (см. кнопку
+  # "Базовый" на s3 выше) — оставлен как есть на случай, если понадобится
+  # вернуть шаг с выбором класса.
   - id: s4
     stage: start
     image: "shots/s4-nine-class-doors.jpg"
@@ -188,7 +199,7 @@ screens:
     buttons:
       - { label: "Впервые", data: s5.new, next: s6, setField: { field: isReturning, value: "false" } }
       - { label: "Уже учились", data: s5.ret, next: s6, setField: { field: isReturning, value: "true" } }
-    back: s4
+    back: s3
 
   - id: s6
     stage: start
