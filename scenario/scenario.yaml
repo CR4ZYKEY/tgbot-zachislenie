@@ -110,7 +110,7 @@ screens:
 
   - id: s1a
     stage: start
-    image: "shots/s1-s1a-data-shield.jpg"
+    image: "shots/s1a-data-vault.jpg"
     text: >-
       Храним только необходимое: имя, телефон, Telegram ID, пакет,
       класс, статус, ваши ответы по шагам и отметки чек-листов —
@@ -261,7 +261,7 @@ screens:
   - id: e1_2a
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e1-2a-support-help.jpg"
     text: >-
       Похоже, письмо не приходило. Не переживайте — служба
       сопровождения поможет разобраться, она уже видит, на каком вы шаге.
@@ -310,7 +310,7 @@ screens:
   - id: e1_4_page
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
-    image: "shots/e1-4-fix-on-site.jpg"
+    image: "shots/e1-4-page-refresh.jpg"
     text: "✎ Попробуйте обновить страницу или открыть её в другом браузере — обычно это помогает."
     buttons:
       - { label: "Да", data: e1_4_page.yes, next: e1_5 }
@@ -319,7 +319,7 @@ screens:
   - id: e1_4_confused
     stage: stage1_access
     stepLabel: "<b>Шаг 1 из 6 · Доступ к платформе</b>"
-    image: "shots/e1-4-fix-on-site.jpg"
+    image: "shots/e1-4-find-tile.jpg"
     text: "✎ После входа найдите и нажмите на плитку в центре экрана — это и есть вход в Город."
     buttons:
       - { label: "Да", data: e1_4_confused.yes, next: e1_5 }
@@ -434,7 +434,7 @@ screens:
   - id: e2_1_kc
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e1-2a-support-help.jpg"
     text: >-
       Похоже, письмо не приходило. Не переживайте — служба
       сопровождения поможет разобраться, она уже видит, на каком вы шаге.
@@ -466,7 +466,7 @@ screens:
   - id: e2_2_sent
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e2-2-mail-drone.jpg"
+    image: "shots/e2-2-sent-docs-check.jpg"
     text: |-
       Документы получены — забрали их в работу. Сейчас проверяем, всё ли на месте.
 
@@ -497,7 +497,7 @@ screens:
   - id: e2_2a_missing
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e2-2a-document-sorting.jpg"
+    image: "shots/e2-2a-missing-detail.jpg"
     text: >-
       ✎ Часто дело в мелочах: документ оформлен не на того родителя,
       нет прописки, устаревшее фото. Если не ваш случай —
@@ -521,7 +521,7 @@ screens:
   - id: e2_2a_where
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e2-2a-document-sorting.jpg"
+    image: "shots/e2-2a-where-to-send.jpg"
     text: |-
       Вот куда их отправить:
       1) Зайдите в <b>Секретариат</b>.
@@ -533,7 +533,7 @@ screens:
   - id: e2_2a_time
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e2-2a-document-sorting.jpg"
+    image: "shots/e2-remind-me-later.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
       - { label: "Напомнить завтра", data: e2_2a_time.tomorrow, next: e2_2 }
@@ -558,7 +558,7 @@ screens:
   - id: e2_3_spam
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e2-3-spam-folders.jpg"
     text: |-
       Загляните в папки <b>«Спам»</b> и <b>«Промоакции»</b> — письма с вложениями часто уезжают туда.
 
@@ -583,7 +583,7 @@ screens:
   - id: e2_3_ping2
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e2-3-school-envelope.jpg"
+    image: "shots/e2-3-ping2-second-look.jpg"
     text: >-
       Ещё раз про письмо со школьными документами — оно так и не
       появилось? Проверьте и входящие, и папку со спамом.
@@ -596,7 +596,7 @@ screens:
   - id: e2_3_kc
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e2-3-kc-mail-rescue.jpg"
     text: >-
       Похоже, письмо действительно не дошло. Напишите в клиентский
       сервис — коллеги видят, на каком вы шаге, и разберутся с почтой.
@@ -621,7 +621,7 @@ screens:
   - id: e2_4_wait
     stage: stage2_enrollment
     stepLabel: "<b>Шаг 2 из 6 · Зачисление в школу</b>"
-    image: "shots/e2-wait-countdown.jpg"
+    image: "shots/e2-remind-me-later.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
       - { label: "Напомнить завтра", data: e2_4_wait.tomorrow, next: e2_4 }
@@ -805,7 +805,7 @@ screens:
   - id: g1_2a
     stage: graduate_access
     stepLabel: "<b>Шаг 1 из 8 · Доступ к платформе</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e1-2a-support-help.jpg"
     text: >-
       Похоже, письмо не приходило. Не переживайте — служба
       сопровождения поможет разобраться, она уже видит, на каком вы шаге.
@@ -852,7 +852,7 @@ screens:
   - id: g1_4_page
     stage: graduate_access
     stepLabel: "<b>Шаг 1 из 8 · Доступ к платформе</b>"
-    image: "shots/e1-4-fix-on-site.jpg"
+    image: "shots/e1-4-page-refresh.jpg"
     text: "✎ Попробуйте обновить страницу или открыть её в другом браузере — обычно это помогает."
     buttons:
       - { label: "Да", data: g1_4_page.yes, next: g1_5 }
@@ -861,7 +861,7 @@ screens:
   - id: g1_4_confused
     stage: graduate_access
     stepLabel: "<b>Шаг 1 из 8 · Доступ к платформе</b>"
-    image: "shots/e1-4-fix-on-site.jpg"
+    image: "shots/e1-4-find-tile.jpg"
     text: "✎ После входа найдите и нажмите на плитку в центре экрана — это и есть вход в Город."
     buttons:
       - { label: "Да", data: g1_4_confused.yes, next: g1_5 }
@@ -939,7 +939,7 @@ screens:
   - id: g2_0
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-0-two-archways.jpg"
+    image: "shots/g2-0-enrollment-then-exams.jpg"
     text: |-
       Переходим к зачислению в нашу школу — здесь ваш герой проходит промежуточную аттестацию. Экзамены — отдельный путь, к нему перейдём сразу после.
 
@@ -979,7 +979,7 @@ screens:
   - id: g2_1_kc
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e1-2a-support-help.jpg"
     text: >-
       Похоже, письмо не приходило. Не переживайте — служба
       сопровождения поможет разобраться, она уже видит, на каком вы шаге.
@@ -1006,7 +1006,7 @@ screens:
   - id: g2_2_sent
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-2-mail-drone.jpg"
+    image: "shots/e2-2-sent-docs-check.jpg"
     text: |-
       Документы получены — забрали их в работу. Сейчас проверяем, всё ли на месте.
 
@@ -1034,7 +1034,7 @@ screens:
   - id: g2_2a_missing
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-2a-document-sorting.jpg"
+    image: "shots/e2-2a-missing-detail.jpg"
     text: >-
       ✎ Часто дело в мелочах: документ оформлен не на того родителя,
       нет прописки, устаревшее фото. Если не ваш случай —
@@ -1058,7 +1058,7 @@ screens:
   - id: g2_2a_where
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-2a-document-sorting.jpg"
+    image: "shots/e2-2a-where-to-send.jpg"
     text: |-
       Вот куда их отправить:
       1) Зайдите в <b>Секретариат</b>.
@@ -1070,7 +1070,7 @@ screens:
   - id: g2_2a_time
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-2a-document-sorting.jpg"
+    image: "shots/e2-remind-me-later.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
       - { label: "Напомнить завтра", data: g2_2a_time.tomorrow, next: g2_2 }
@@ -1091,7 +1091,7 @@ screens:
   - id: g2_3_spam
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e2-3-spam-folders.jpg"
     text: |-
       Загляните в папки <b>«Спам»</b> и <b>«Промоакции»</b> — письма с вложениями часто уезжают туда.
 
@@ -1114,7 +1114,7 @@ screens:
   - id: g2_3_ping2
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-3-school-envelope.jpg"
+    image: "shots/e2-3-ping2-second-look.jpg"
     text: >-
       Ещё раз про письмо со школьными документами — оно так и не
       появилось? Проверьте и входящие, и папку со спамом.
@@ -1126,7 +1126,7 @@ screens:
   - id: g2_3_kc
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e1-2-lost-mail-search.jpg"
+    image: "shots/e2-3-kc-mail-rescue.jpg"
     text: >-
       Похоже, письмо действительно не дошло. Напишите в клиентский
       сервис — коллеги видят, на каком вы шаге, и разберутся с почтой.
@@ -1151,7 +1151,7 @@ screens:
   - id: g2_4_wait
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-wait-countdown.jpg"
+    image: "shots/e2-remind-me-later.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
       - { label: "Напомнить завтра", data: g2_4_wait.tomorrow, next: g2_4 }
@@ -1162,7 +1162,7 @@ screens:
   - id: g2_5
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-5-archive-tower.jpg"
+    image: "shots/g2-5-certificate-for-exams.jpg"
     text: >-
       Готово! Дальше всё делаем мы: справка появится в <b>Секретариате</b> →
       «<b>Справки</b>» через 3 дня после подачи. ✎ Она пригодится на следующем
@@ -1173,7 +1173,7 @@ screens:
   - id: g2_6
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/e2-6-path-open.jpg"
+    image: "shots/g2-6-to-the-exams.jpg"
     text: >-
       ✦ <b>Зачисление пройдено.</b> Два шага из восьми позади. Дальше — путь
       к {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}: его семья проходит сама, а я подскажу,
@@ -1187,7 +1187,7 @@ screens:
   - id: g3_0
     stage: graduate_attach
     stepLabel: "<b>Шаг 3 из 8 · Прикрепление к школе</b>"
-    image: "shots/g3-exam-school-gate.jpg"
+    image: "shots/g3-0-exam-road-begins.jpg"
     text: >-
       Дальше — путь к {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}. Пакет «Базовый» закрывает
       промежуточную аттестацию, а экзамены семья проходит сама. Я подскажу,
@@ -1300,7 +1300,7 @@ screens:
   - id: g5_mcko
     stage: graduate_prep
     stepLabel: "<b>Шаг 5 из 8 · Подготовка</b>"
-    image: "shots/g5-practice-hall.jpg"
+    image: "shots/g5-mcko-signup.jpg"
     text: >-
       Запись — на сайте <b>cnd.mcko.ru</b>, раздел «Индивидуальная диагностика».
       Диагностика платная, оплатить заявку нужно за 72 часа. Пошаговая
@@ -1328,7 +1328,7 @@ screens:
   - id: g5_wait
     stage: graduate_prep
     stepLabel: "<b>Шаг 5 из 8 · Подготовка</b>"
-    image: "shots/g4-calendar-board.jpg"
+    image: "shots/g5-wait-next-beacon.jpg"
     text: >-
       Договорились. Следующая важная дата — {{#if grade11}}итоговое сочинение
       2 декабря{{else}}итоговое собеседование 10 февраля{{/if}}. Напишу ближе к ней.
@@ -1355,7 +1355,7 @@ screens:
   - id: g6_1
     stage: graduate_admission
     stepLabel: "<b>Шаг 6 из 8 · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
-    image: "shots/g6-admission-trial.jpg"
+    image: "shots/g6-1-date-approaching.jpg"
     text: >-
       Скоро {{#if grade11}}итоговое сочинение — 2 декабря{{else}}итоговое
       собеседование — 10 февраля{{/if}}, очно в школе прикрепления.
@@ -1412,7 +1412,7 @@ screens:
   - id: g6_retry
     stage: graduate_admission
     stepLabel: "<b>Шаг 6 из 8 · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
-    image: "shots/g6-reserve-bridge.jpg"
+    image: "shots/g6-retry-second-try.jpg"
     text: >-
       Такое бывает, это поправимо. Есть резервные даты — уточните их в школе
       прикрепления и подайте заявление заранее.
@@ -1429,7 +1429,7 @@ screens:
   - id: g7_1
     stage: graduate_exams
     stepLabel: "<b>Шаг 7 из 8 · Экзамены</b>"
-    image: "shots/g7-exam-building.jpg"
+    image: "shots/g7-1-admission-granted.jpg"
     text: >-
       ✦ <b>Допуск получен.</b> Дальше — {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} по графику
       Рособрнадзора. Экзамен проходит не в школе прикрепления: пункт назначает
@@ -1463,7 +1463,7 @@ screens:
   - id: g7_ask
     stage: graduate_exams
     stepLabel: "<b>Шаг 7 из 8 · Экзамены</b>"
-    image: "shots/g7-exam-building.jpg"
+    image: "shots/g7-ask-school-window.jpg"
     text: >-
       Уведомление приходит через школу прикрепления — уточните у неё. Спрошу
       ещё раз через неделю.
