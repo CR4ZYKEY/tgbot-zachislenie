@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
-import { InputFile } from 'grammy';
+import { readFile, stat } from 'fs/promises';
+import { relative, resolve } from 'path';
+import { GrammyError, InputFile } from 'grammy';
 import type { Api, InlineKeyboard } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -34,10 +36,14 @@ export class ScreenRendererService {
   private readonly logger = new Logger(ScreenRendererService.name);
 
   // Telegram отдаёт file_id после первой успешной загрузки — дальше та же
-  // картинка шлётся им, без повторной заливки байтов. Кэш живёт в памяти
-  // процесса, ключ — путь картинки на диске, общий для всех пользователей,
-  // т.к. сама картинка от них не зависит.
-  private readonly photoFileIds = new Map<string, string>();
+  // картинка шлётся им, без повторной заливки байтов. Первый уровень кэша —
+  // память процесса, второй — таблица photo_cache: она переживает рестарты
+  // и общая для bot и worker. Ключ — путь относительно assets/, общий для
+  // всех пользователей, т.к. сама картинка от них не зависит.
+  private readonly photoFileIds = new Map<string, { fingerprint: string; fileId: string }>();
+  // sha1 содержимого, пересчитывается только когда у файла изменились размер
+  // или время изменения — иначе каждая отправка читала бы файл с диска.
+  private readonly fingerprints = new Map<string, { size: number; mtimeMs: number; hash: string }>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -200,14 +206,67 @@ export class ScreenRendererService {
     if (!assetPath) {
       return api.sendMessage(chatId, text, { reply_markup: kb, parse_mode: 'HTML' });
     }
-    // Уже заливали эту картинку с этого процесса — шлём по file_id, без
-    // повторной загрузки байтов (иначе каждый показ экрана переливал бы
-    // мегабайты заново, отсюда и заметная задержка).
-    const cached = this.photoFileIds.get(assetPath);
-    const photo = cached ?? new InputFile(assetPath);
-    const sent = await api.sendPhoto(chatId, photo, { caption: text, reply_markup: kb, parse_mode: 'HTML' });
-    const newFileId = sent.photo.at(-1)?.file_id;
-    if (newFileId && newFileId !== cached) this.photoFileIds.set(assetPath, newFileId);
+    const opts = { caption: text, reply_markup: kb, parse_mode: 'HTML' as const };
+    const key = relative(resolve(process.cwd(), 'assets'), assetPath).replace(/\\/g, '/');
+    const fingerprint = await this.fingerprint(assetPath);
+
+    // Картинку уже заливали (этим или другим процессом, до рестарта или после)
+    // — шлём по file_id, без повторной загрузки байтов.
+    const cachedFileId = await this.lookupFileId(key, fingerprint);
+    if (cachedFileId) {
+      try {
+        return await api.sendPhoto(chatId, cachedFileId, opts);
+      } catch (err) {
+        // file_id больше не годится: сменили токен бота или Telegram забыл
+        // файл. Молча перезальём ниже. Остальные ошибки — не наша забота здесь.
+        if (!(err instanceof GrammyError && err.error_code === 400)) throw err;
+        this.logger.warn(`file_id для ${key} не принят Telegram (${err.description}) — перезаливаю файл`);
+      }
+    }
+
+    const sent = await api.sendPhoto(chatId, new InputFile(assetPath), opts);
+    const fileId = sent.photo.at(-1)?.file_id;
+    if (fileId) await this.rememberFileId(key, fingerprint, fileId);
     return sent;
+  }
+
+  private async fingerprint(assetPath: string): Promise<string> {
+    const st = await stat(assetPath);
+    const memo = this.fingerprints.get(assetPath);
+    if (memo && memo.size === st.size && memo.mtimeMs === st.mtimeMs) return memo.hash;
+    const hash = createHash('sha1').update(await readFile(assetPath)).digest('hex');
+    this.fingerprints.set(assetPath, { size: st.size, mtimeMs: st.mtimeMs, hash });
+    return hash;
+  }
+
+  // Сначала память процесса, потом БД. Запись с другим отпечатком — это
+  // старая версия картинки под тем же именем, её file_id не годится.
+  private async lookupFileId(key: string, fingerprint: string): Promise<string | null> {
+    const mem = this.photoFileIds.get(key);
+    if (mem?.fingerprint === fingerprint) return mem.fileId;
+    try {
+      const row = await this.prisma.photoCache.findUnique({ where: { path: key } });
+      if (row?.fingerprint === fingerprint) {
+        this.photoFileIds.set(key, { fingerprint, fileId: row.fileId });
+        return row.fileId;
+      }
+    } catch (err) {
+      // Кэш — ускорение, а не условие отправки: без него просто зальём файл.
+      this.logger.warn(`Кэш картинок недоступен: ${err instanceof Error ? err.message : err}`);
+    }
+    return null;
+  }
+
+  private async rememberFileId(key: string, fingerprint: string, fileId: string): Promise<void> {
+    this.photoFileIds.set(key, { fingerprint, fileId });
+    try {
+      await this.prisma.photoCache.upsert({
+        where: { path: key },
+        create: { path: key, fingerprint, fileId },
+        update: { fingerprint, fileId },
+      });
+    } catch (err) {
+      this.logger.warn(`Не удалось сохранить file_id для ${key}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }

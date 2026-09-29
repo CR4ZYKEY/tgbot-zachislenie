@@ -155,3 +155,21 @@ model SyncCursor {
 
   @@map("sync_cursors")
 }
+
+// Telegram file_id уже загруженных картинок экранов. После первой заливки
+// файла Telegram отдаёт file_id, и дальше картинка отправляется по нему —
+// без повторной загрузки байтов, почти мгновенно. Раньше это жило только в
+// памяти процесса и терялось на каждом рестарте; в БД кэш общий для bot и
+// worker и переживает перезапуски.
+// fingerprint — sha1 содержимого файла: заменили картинку под тем же именем —
+// отпечаток не совпадёт, и файл зальётся заново. file_id привязан к боту,
+// поэтому смена токена лечится так же — отправка по старому id падает, и
+// рендер перезаливает файл (см. screen-renderer.service.ts).
+model PhotoCache {
+  path        String   @id // путь относительно assets/, например "shots/s0-welcome-letter.jpg"
+  fingerprint String
+  fileId      String
+  updatedAt   DateTime @updatedAt
+
+  @@map("photo_cache")
+}
