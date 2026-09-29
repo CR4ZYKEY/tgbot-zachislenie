@@ -258,7 +258,10 @@ export class EngineService {
     // остаётся на экране — его кнопки в сообщении выше по-прежнему рабочие.
     if (button.document) {
       await this.renderer.sendDocument(ctx.api, ctx.chat!.id, button.document, `экрана "${screen.id}"`);
-      if (!button.next) return;
+      if (!button.next) {
+        await this.renderer.markResponded(user);
+        return;
+      }
     }
 
     if (screen.deferButton?.data === decoded.data) {
@@ -318,6 +321,7 @@ export class EngineService {
     await ctx.editMessageReplyMarkup({ reply_markup: kb }).catch((err) => {
       this.logger.warn(`Не удалось убрать кнопки на "${screen.id}": ${err instanceof Error ? err.message : err}`);
     });
+    await this.renderer.markResponded(user);
   }
 
   // Свободный ввод: ровно три места в сценарии (п.4 CLAUDE.md) — имя,

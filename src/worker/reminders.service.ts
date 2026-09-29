@@ -89,7 +89,10 @@ export class RemindersService {
     // пришло. Оставшиеся напоминания по этому поводу больше не нужны.
     // У напоминания может быть своя зона (календарь выпускника).
     const waitingScreens = reminder.waitingScreens ?? source.reminders.waitingScreens;
-    if (!waitingScreens.includes(user.stage)) {
+    // Класс проверяется и при постановке, и здесь: родитель мог вернуться
+    // и выбрать другой класс — даты старого класса ему уже не нужны.
+    const wrongClass = reminder.forClass != null && !reminder.forClass.includes(user.class ?? '');
+    if (!waitingScreens.includes(user.stage) || wrongClass) {
       await this.finish(job, 'cancelled');
       return;
     }
@@ -108,7 +111,10 @@ export class RemindersService {
       this.logger.log(`Родитель ${user.id}: ${user.consecutiveMisses} касаний без ответа — ставлю этап "${stage}" на паузу`);
       await this.prisma.user.update({
         where: { id: user.id },
-        data: { mutedStages: { push: stage } },
+        // Счётчик обнуляется: пауза — по одному этапу. Иначе он так и стоял
+        // бы на трёх, и каждое следующее напоминание любого другого этапа
+        // тоже молча уходило бы на паузу, не будучи отправленным ни разу.
+        data: { mutedStages: { push: stage }, consecutiveMisses: 0 },
       });
       await this.finish(job, 'cancelled');
       return;

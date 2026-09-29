@@ -105,6 +105,9 @@ export class ScreenRendererService {
         // добавляет неотвеченное касание: три подряд ставят этап на паузу
         // (модель напоминаний, CLAUDE.md).
         consecutiveMisses: byUser ? 0 : { increment: 1 },
+        // Пауза — не навсегда: родитель снова ответил, и напоминания по
+        // поставленным на паузу этапам возвращаются.
+        ...(byUser ? { mutedStages: [] } : {}),
       },
     });
 
@@ -127,6 +130,18 @@ export class ScreenRendererService {
 
     await this.scheduleReminders(updated, screen);
     return updated;
+  }
+
+  // Родитель ответил, но экран не сменился: «Понятно» на экране ожидания
+  // (next: wait) или кнопка с файлом. Для модели напоминаний это такой же
+  // ответ, как переход, — иначе после трёх «Ещё не знаем» подряд этап ушёл
+  // бы на паузу, хотя родитель отвечал каждый раз.
+  async markResponded(user: User): Promise<void> {
+    if (user.consecutiveMisses === 0 && user.mutedStages.length === 0) return;
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { consecutiveMisses: 0, mutedStages: [] },
+    });
   }
 
   // Экран-«ожидание» (например, e2_2_sent: документы отправлены, ждём письма
