@@ -126,10 +126,24 @@ export class ScreenRendererService {
     const sent = await this.sendTextOrPhoto(api, chatId, assetPath, text, kb);
     if (sent.message_id !== updated.lastMessageId) {
       await this.prisma.user.update({ where: { id: updated.id }, data: { lastMessageId: sent.message_id } });
+      await this.stripKeyboard(api, chatId, updated.lastMessageId);
     }
 
     await this.scheduleReminders(updated, screen);
     return updated;
+  }
+
+  // Кнопки живут только на актуальном экране: у прошлого сообщения их
+  // снимаем, текст и картинка остаются в истории чата. Снимаем уже после
+  // отправки нового — если отправка не удалась, старые кнопки ещё рабочие.
+  // Сбой тут не критичен (сообщение удалили руками и т.п.): на случай
+  // уцелевших кнопок есть проверка renderVersion в движке («Старые кнопки»).
+  private async stripKeyboard(api: Api, chatId: number, messageId: number | null): Promise<void> {
+    if (!messageId) return;
+    await api.editMessageReplyMarkup(chatId, messageId).catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/message is not modified/i.test(msg)) this.logger.warn(`Не удалось снять кнопки с сообщения ${messageId}: ${msg}`);
+    });
   }
 
   // Родитель ответил, но экран не сменился: «Понятно» на экране ожидания
