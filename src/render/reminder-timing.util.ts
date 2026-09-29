@@ -17,6 +17,13 @@ export function isReminderTestMode(): boolean {
   return reminderTestMinutes() !== null;
 }
 
+// Напоминание по дате уходит в 10:00 МСК — первая минута тихих часов
+// (10:00–21:00 МСК, CLAUDE.md). Москва — UTC+3 круглый год, так что это
+// 07:00 UTC того же дня.
+export function reminderDateToRunAt(at: string): Date {
+  return new Date(`${at}T07:00:00.000Z`);
+}
+
 // Часы по сценарию -> миллисекунды, с учётом тестового сжатия.
 export function reminderHoursToMs(hours: number): number {
   const testMinutes = reminderTestMinutes();

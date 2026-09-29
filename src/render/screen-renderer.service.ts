@@ -6,12 +6,14 @@ import type { Api, InlineKeyboard } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
-import { Button, Screen } from '../../scenario/schema';
+import { Button, Reminder, Screen } from '../../scenario/schema';
 import { renderTemplate, TemplateVars } from './template.util';
 import { buildScreenKeyboard } from './keyboard.util';
-import { reminderHoursToMs } from './reminder-timing.util';
+import { reminderDateToRunAt, reminderHoursToMs } from './reminder-timing.util';
 
 const HISTORY_LIMIT = 50;
+// CLAUDE.md: «абсолютный триггер ближе 14 дней от старта не создаётся».
+const DEFAULT_MIN_DAYS_FROM_START = 14;
 
 export interface RenderOptions {
   pushHistory: boolean;
@@ -124,8 +126,13 @@ export class ScreenRendererService {
     const now = Date.now();
 
     for (const [index, reminder] of screen.reminders.schedule.entries()) {
+      // Напоминание для другого класса (у 9 и 11 разные даты допуска).
+      if (reminder.forClass && !reminder.forClass.includes(user.class ?? '')) continue;
+
+      const runAt = this.reminderRunAt(reminder, user, now);
+      if (!runAt) continue;
+
       const dedupKey = `${user.id}:${screen.id}:${index}`;
-      const runAt = new Date(now + reminderHoursToMs(reminder.afterHours));
       try {
         await this.prisma.job.upsert({
           where: { dedupKey },
@@ -147,6 +154,22 @@ export class ScreenRendererService {
         );
       }
     }
+  }
+
+  // Когда отправить напоминание, или null — если ставить его не нужно.
+  // Правила абсолютных триггеров из CLAUDE.md: прошедшие даты не создаются,
+  // дата ближе minDaysFromStart (по умолчанию 14) к старту родителя в боте —
+  // тоже, чтобы новичка не засыпало напоминаниями в первые же дни.
+  private reminderRunAt(reminder: Reminder, user: User, now: number): Date | null {
+    if (reminder.afterHours != null) {
+      return new Date(now + reminderHoursToMs(reminder.afterHours));
+    }
+    const runAt = reminderDateToRunAt(reminder.at!);
+    if (runAt.getTime() <= now) return null;
+    const minDays = reminder.minDaysFromStart ?? DEFAULT_MIN_DAYS_FROM_START;
+    const daysFromStart = (runAt.getTime() - user.createdAt.getTime()) / 86_400_000;
+    if (daysFromStart < minDays) return null;
+    return runAt;
   }
 
   // Путь к скриншоту/иллюстрации экрана или оверлея → абсолютный путь на
