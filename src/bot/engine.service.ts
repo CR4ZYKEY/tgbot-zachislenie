@@ -6,7 +6,7 @@ import { ScenarioService } from '../scenario/scenario.service';
 import { ScreenRendererService } from '../render/screen-renderer.service';
 import { Button, SYSTEM_SCREEN_KEYS, SystemScreenKey } from '../../scenario/schema';
 import { renderTemplate } from '../render/template.util';
-import { buildSystemKeyboard, decodeCallback } from '../render/keyboard.util';
+import { buildScreenKeyboard, buildSystemKeyboard, decodeCallback } from '../render/keyboard.util';
 import { normalizePhone } from './phone.util';
 import { sanitizeFreeText } from './sanitize.util';
 
@@ -287,11 +287,30 @@ export class EngineService {
       await this.wipeUser(ctx, user);
       return;
     }
+    if (target === 'wait') {
+      await this.acknowledgeAndWait(ctx, user);
+      return;
+    }
     if (isSystemKey(target)) {
       await this.showOverlay(ctx, user, target, overlayBackTarget);
       return;
     }
     await this.render(ctx, user, target, { pushHistory: true });
+  }
+
+  // «Понятно» на экране-ожидании (next: wait): родитель остаётся на месте,
+  // дальше бот напишет сам по дате. С сообщения убираем кнопки ответа —
+  // видно, что нажатие принято, и повторно нажимать нечего. «← Назад» и
+  // «☰ Меню» остаются: из ожидания должно быть куда выйти.
+  private async acknowledgeAndWait(ctx: Context, user: User): Promise<void> {
+    const screen = this.scenario.getScreen(user.stage);
+    const kb = buildScreenKeyboard({ ...screen, buttons: undefined }, user.renderVersion, {
+      backTarget: screen.back ?? user.historyStack[user.historyStack.length - 1],
+      urlVars: this.renderer.urlVars(user),
+    });
+    await ctx.editMessageReplyMarkup({ reply_markup: kb }).catch((err) => {
+      this.logger.warn(`Не удалось убрать кнопки на "${screen.id}": ${err instanceof Error ? err.message : err}`);
+    });
   }
 
   // Свободный ввод: ровно три места в сценарии (п.4 CLAUDE.md) — имя,

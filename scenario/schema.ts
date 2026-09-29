@@ -12,8 +12,12 @@ import { z } from 'zod';
 //   не статика — используется в system.stale, «Да, к текущему шагу»);
 // - status          — показать то же, что /status;
 // - defer_to_stage2 — зарезервировано под симметричный перенос (раздел 0,
-//   п.7 спеки: «если застрял на этапе 2 — предложить пройти этап 1»).
-export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2'] as const;
+//   п.7 спеки: «если застрял на этапе 2 — предложить пройти этап 1»);
+// - wait            — «Понятно», после которого бот ничего не показывает, а
+//   ждёт своей даты (путь выпускника: g6_ready, g7_1, …). Родитель остаётся
+//   на экране, у сообщения убираются кнопки ответа — дальше напишет
+//   напоминание.
+export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait'] as const;
 
 // Обязательные системные экраны — не часть карты пути, но текст в них
 // показывается родителю, поэтому по правилу 1 CLAUDE.md тоже живёт в YAML.
@@ -91,6 +95,15 @@ export const ReminderSchema = z
     // Напоминание только родителям этих классов (поле профиля class). Нужно,
     // когда у 9 и 11 класса разные даты — например, собеседование и сочинение.
     forClass: z.array(z.string().min(1)).min(1).optional(),
+    // Своя зона ожидания у этого напоминания вместо общей (reminders.waitingScreens).
+    // Нужна календарю выпускника: он ставится одним списком в начале пути, а
+    // у каждой даты свой «шаг ещё не сделан» — про заявление спрашиваем, пока
+    // родитель на шагах 3–4, про собеседование — пока он не дошёл до шага 6.
+    waitingScreens: z.array(z.string().regex(idRegex)).min(1).optional(),
+    // Только для afterHours: при новом заходе на экран уже отправленное
+    // напоминание ставится заново. Для «спрошу ещё раз через неделю», которое
+    // повторяется, пока родитель не ответит (до паузы после трёх молчаний).
+    rearm: z.boolean().optional(),
     // Какой экран показать. Каждое напоминание — свой экран со своим текстом:
     // повторять слово в слово нельзя, иначе выглядит как сбой рассылки.
     screen: z.string().regex(idRegex),
@@ -100,6 +113,9 @@ export const ReminderSchema = z
   })
   .refine((r) => r.minDaysFromStart == null || r.at != null, {
     message: 'minDaysFromStart имеет смысл только у напоминания по дате (at)',
+  })
+  .refine((r) => !r.rearm || r.afterHours != null, {
+    message: 'rearm имеет смысл только у напоминания afterHours',
   });
 export type Reminder = z.infer<typeof ReminderSchema>;
 
@@ -279,6 +295,14 @@ export const ScenarioSchema = z
               message: `Экран "${screen.id}": reminders.schedule[${i}].screen ссылается на несуществующий screen_id "${r.screen}"`,
             });
           }
+          for (const w of r.waitingScreens ?? []) {
+            if (!ids.has(w)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Экран "${screen.id}": reminders.schedule[${i}].waitingScreens содержит несуществующий screen_id "${w}"`,
+              });
+            }
+          }
         }
         for (const w of screen.reminders.waitingScreens) {
           if (!ids.has(w)) {
@@ -304,16 +328,19 @@ export const ScenarioSchema = z
     }
 
     // Критерий приёмки 1 / п.4 CLAUDE.md: свободный ввод ровно в трёх местах.
+    // Отзыв о Городе — одно место по смыслу, но экранов два: E1.5b в базовом
+    // пути и его копия g1_5b в пути выпускника. Имя и телефон — строго по одному.
     const freeInputFields = scenario.screens
       .filter((s) => s.input)
       .map((s) => s.input!.field);
     const allowedFields: FreeInput['field'][] = ['name', 'phone', 'city_feedback'];
+    const maxScreens: Record<FreeInput['field'], number> = { name: 1, phone: 1, city_feedback: 2 };
     for (const field of allowedFields) {
       const count = freeInputFields.filter((f) => f === field).length;
-      if (count > 1) {
+      if (count > maxScreens[field]) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Поле свободного ввода "${field}" встречается ${count} раз(а) — должно быть ровно 1`,
+          message: `Поле свободного ввода "${field}" встречается ${count} раз(а) — допустимо не больше ${maxScreens[field]}`,
         });
       }
     }

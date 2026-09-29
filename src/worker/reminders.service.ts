@@ -87,21 +87,28 @@ export class RemindersService {
 
     // Родитель уже ушёл из зоны ожидания — значит подтвердил, что письмо
     // пришло. Оставшиеся напоминания по этому поводу больше не нужны.
-    if (!source.reminders.waitingScreens.includes(user.stage)) {
+    // У напоминания может быть своя зона (календарь выпускника).
+    const waitingScreens = reminder.waitingScreens ?? source.reminders.waitingScreens;
+    if (!waitingScreens.includes(user.stage)) {
       await this.finish(job, 'cancelled');
       return;
     }
 
-    // Этап на паузе (три неотвеченных касания подряд) — молчим.
-    if (user.mutedStages.includes(source.stage)) {
+    // Этап на паузе (три неотвеченных касания подряд) — молчим. Этап — тот,
+    // о котором напоминание: календарь выпускника ставится с одного экрана,
+    // но молчание про собеседование не должно глушить напоминания об экзаменах.
+    const stage = this.scenario.hasScreen(reminder.screen)
+      ? this.scenario.getScreen(reminder.screen).stage
+      : source.stage;
+    if (user.mutedStages.includes(stage)) {
       await this.finish(job, 'cancelled');
       return;
     }
     if (user.consecutiveMisses >= MAX_CONSECUTIVE_MISSES) {
-      this.logger.log(`Родитель ${user.id}: ${user.consecutiveMisses} касаний без ответа — ставлю этап "${source.stage}" на паузу`);
+      this.logger.log(`Родитель ${user.id}: ${user.consecutiveMisses} касаний без ответа — ставлю этап "${stage}" на паузу`);
       await this.prisma.user.update({
         where: { id: user.id },
-        data: { mutedStages: { push: source.stage } },
+        data: { mutedStages: { push: stage } },
       });
       await this.finish(job, 'cancelled');
       return;
@@ -113,13 +120,17 @@ export class RemindersService {
       return;
     }
 
+    // «Отправлено» ставим до показа: экран напоминания может сам поставить
+    // эту же задачу заново (rearm — «спрошу ещё раз через неделю»), и отметка
+    // после показа затёрла бы новую. Если отправка упадёт, processDue
+    // переведёт задачу в failed.
+    await this.finish(job, 'sent', now);
     await this.renderer.renderScreen(this.api, Number(user.tgId), user, reminder.screen, {
       pushHistory: true,
       // Не действие родителя: счётчик неотвеченных касаний должен расти,
       // а не обнуляться.
       byUser: false,
     });
-    await this.finish(job, 'sent', now);
     this.logger.log(`Напоминание ${job.dedupKey} отправлено: экран "${reminder.screen}"`);
   }
 

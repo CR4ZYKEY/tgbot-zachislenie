@@ -55,11 +55,17 @@ export class ScreenRendererService {
       isReturning: user.isReturning ?? false,
       class: user.class,
       name: user.name,
+      // Путь выпускника: тексты ОГЭ/ЕГЭ различаются по классу — шаблон умеет
+      // только {{#if флаг}}, поэтому класс 11 отдаётся отдельным флагом.
+      isGraduate: user.package === 'Выпускник',
+      grade11: user.class === '11',
     };
   }
 
+  // Переменные для кнопок: и ссылки КС, и подписи вроде «Решу ОГЭ / Решу ЕГЭ».
   urlVars(user: User): TemplateVars {
     return {
+      ...this.buildVars(user),
       kc_username: process.env.KC_BOT_USERNAME ?? 'help_bot',
       kc_context: `step_${user.stage}`,
     };
@@ -103,7 +109,8 @@ export class ScreenRendererService {
     });
 
     const prefix = screen.stepLabel ? `${screen.stepLabel}\n` : '';
-    const text = prefix + renderTemplate(screen.text, this.buildVars(updated));
+    // Заголовок шага — тоже шаблон: «Итоговое собеседование / сочинение» по классу.
+    const text = renderTemplate(prefix + screen.text, this.buildVars(updated));
 
     const showBack = Boolean(screen.back) || updated.historyStack.length > 0;
     const kb = buildScreenKeyboard(screen, updated.renderVersion, {
@@ -140,6 +147,19 @@ export class ScreenRendererService {
 
       const dedupKey = `${user.id}:${screen.id}:${index}`;
       try {
+        // rearm: «спрошу ещё раз через неделю» — прошлое напоминание уже ушло
+        // (или как раз сейчас уходит: воркер рисует этот же экран), ставим
+        // следующее. Ждущее своего часа не трогаем — срок не сдвигается.
+        if (reminder.rearm) {
+          const existing = await this.prisma.job.findUnique({ where: { dedupKey } });
+          if (existing && (existing.status !== 'pending' || existing.runAt.getTime() <= now)) {
+            await this.prisma.job.update({
+              where: { dedupKey },
+              data: { status: 'pending', runAt, sentAt: null },
+            });
+            continue;
+          }
+        }
         await this.prisma.job.upsert({
           where: { dedupKey },
           create: {

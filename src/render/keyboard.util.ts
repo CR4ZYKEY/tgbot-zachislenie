@@ -38,10 +38,12 @@ function addButtonRows(
   for (let i = 0; i < buttons.length; i += perRow) {
     const row = buttons.slice(i, i + perRow);
     for (const b of row) {
+      // Подпись тоже шаблон: «Решу ОГЭ» / «Решу ЕГЭ» по классу выпускника.
+      const label = renderTemplate(b.label, urlVars);
       if (b.url) {
-        kb.url(b.label, renderTemplate(b.url, urlVars));
+        kb.url(label, renderTemplate(b.url, urlVars));
       } else if (b.data) {
-        kb.text(b.label, encodeCallback(screenId, b.data, renderVersion));
+        kb.text(label, encodeCallback(screenId, b.data, renderVersion));
       }
     }
     kb.row();
