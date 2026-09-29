@@ -1173,7 +1173,7 @@ screens:
   - id: g2_6
     stage: graduate_enrollment
     stepLabel: "<b>Шаг 2 из 8 · Зачисление в школу</b>"
-    image: "shots/g2-6-to-the-exams.jpg"
+    image: "shots/g2-6-enrolled-badge.jpg"
     text: >-
       ✦ <b>Зачисление пройдено.</b> Два шага из восьми позади — ваш герой
       официально в нашей школе.
