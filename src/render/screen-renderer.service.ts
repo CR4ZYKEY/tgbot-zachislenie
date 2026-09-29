@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { existsSync } from 'fs';
 import { readFile, stat } from 'fs/promises';
-import { relative, resolve } from 'path';
+import { basename, relative, resolve } from 'path';
 import { GrammyError, InputFile } from 'grammy';
 import type { Api, InlineKeyboard } from 'grammy';
 import type { User } from '@prisma/client';
@@ -248,6 +248,31 @@ export class ScreenRendererService {
     const fileId = sent.photo.at(-1)?.file_id;
     if (fileId) await this.rememberFileId(key, fingerprint, fileId);
     return sent;
+  }
+
+  // Файл по кнопке (памятка МЦКО). Тот же кэш file_id, что у картинок:
+  // ключ — путь от assets/, так что PDF заливается в Telegram один раз.
+  // Имя файла у родителя — имя файла на диске (см. document в schema.ts).
+  async sendDocument(api: Api, chatId: number, document: string, contextLabel: string): Promise<void> {
+    const assetPath = this.resolveAsset(document, contextLabel);
+    if (!assetPath) return;
+    const key = relative(resolve(process.cwd(), 'assets'), assetPath).replace(/\\/g, '/');
+    const fingerprint = await this.fingerprint(assetPath);
+
+    const cachedFileId = await this.lookupFileId(key, fingerprint);
+    if (cachedFileId) {
+      try {
+        await api.sendDocument(chatId, cachedFileId);
+        return;
+      } catch (err) {
+        if (!(err instanceof GrammyError && err.error_code === 400)) throw err;
+        this.logger.warn(`file_id для ${key} не принят Telegram (${err.description}) — перезаливаю файл`);
+      }
+    }
+
+    const sent = await api.sendDocument(chatId, new InputFile(assetPath, basename(assetPath)));
+    const fileId = sent.document?.file_id;
+    if (fileId) await this.rememberFileId(key, fingerprint, fileId);
   }
 
   private async fingerprint(assetPath: string): Promise<string> {

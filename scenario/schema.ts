@@ -48,9 +48,17 @@ export const ButtonSchema = z
     // Плейсхолдеры {{kc_username}} / {{kc_context}} подставляет движок.
     url: z.string().min(1).optional(),
     setField: SetFieldSchema.optional(),
+    // Файл, который бот присылает по нажатию (памятка МЦКО на g5_mcko) —
+    // путь относительно assets/, как у image. Имя файла у родителя — имя
+    // файла на диске, поэтому называть его по-русски и по-человечески.
+    // Без next родитель остаётся на том же экране.
+    document: z.string().min(1).optional(),
   })
   .refine((b) => Boolean(b.url) !== Boolean(b.data), {
     message: 'кнопка должна быть либо callback (data), либо ссылкой (url) — не оба и не ни одного',
+  })
+  .refine((b) => !b.document || Boolean(b.data), {
+    message: 'document бывает только у callback-кнопки (data)',
   });
 export type Button = z.infer<typeof ButtonSchema>;
 
@@ -248,7 +256,7 @@ export const ScenarioSchema = z
       }
       // Callback-кнопка без next — тупик, приложение не должно подняться.
       for (const [i, b] of (buttons ?? []).entries()) {
-        if (!b.url && !b.next) {
+        if (!b.url && !b.next && !b.document) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: `${screenLabel}: buttons[${i}] (${b.data}) без next — кнопка без обработчика`,

@@ -254,6 +254,13 @@ export class EngineService {
       });
     }
 
+    // Кнопка с файлом (памятка МЦКО): присылаем документ. Без next родитель
+    // остаётся на экране — его кнопки в сообщении выше по-прежнему рабочие.
+    if (button.document) {
+      await this.renderer.sendDocument(ctx.api, ctx.chat!.id, button.document, `экрана "${screen.id}"`);
+      if (!button.next) return;
+    }
+
     if (screen.deferButton?.data === decoded.data) {
       await this.prisma.user.update({
         where: { id: user.id },
