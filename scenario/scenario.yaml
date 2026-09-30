@@ -208,7 +208,7 @@ screens:
   # (tariffs/bazovy-bez-gia.yaml).
   - id: s_gia
     stage: start
-    image: "shots/g-class-two-towers.jpg"
+    image: "shots/gia-support-choice.jpg"
     text: |-
       В 9 и 11 классе «Базовый» бывает двух видов:
       • <b>с ГИА</b> — куратор сопровождает {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}: заявки, допуск, экзамены;
@@ -841,7 +841,7 @@ screens:
   - id: e4_2
     stage: stage4_attest
     stepLabel: "<b>Шаг 4 из 6 · Аттестации и завершение класса</b>"
-    image: "shots/g5-practice-hall.jpg"
+    image: "shots/attest-progress-planters.jpg"
     text: |-
       Пора проверить аттестации.
 
@@ -857,7 +857,7 @@ screens:
   - id: e4_3
     stage: stage4_attest
     stepLabel: "<b>Шаг 4 из 6 · Аттестации и завершение класса</b>"
-    image: "shots/g5-practice-hall.jpg"
+    image: "shots/attest-last-stones.jpg"
     text: |-
       Май — время закрывать аттестации.
 
@@ -875,7 +875,7 @@ screens:
   - id: e4_4
     stage: stage4_attest
     stepLabel: "<b>Шаг 4 из 6 · Аттестации и завершение класса</b>"
-    image: "shots/g5-practice-hall.jpg"
+    image: "shots/attest-final-stretch.jpg"
     text: |-
       📅 Аттестации и завершение класса — до <b>31 мая 2027</b>.
 
@@ -891,7 +891,7 @@ screens:
   - id: e4_wip
     stage: stage4_attest
     stepLabel: "<b>Шаг 4 из 6 · Аттестации и завершение класса</b>"
-    image: "shots/e2-remind-me-later.jpg"
+    image: "shots/attest-keep-going.jpg"
     text: |-
       Хорошо, не буду торопить — загляну ещё.
 
@@ -903,7 +903,7 @@ screens:
   - id: e4_finish
     stage: stage4_attest
     stepLabel: "<b>Шаг 4 из 6 · Аттестации и завершение класса</b>"
-    image: "shots/e1-4-find-tile.jpg"
+    image: "shots/finish-class-button.jpg"
     text: |-
       Осталось завершить класс.
 
@@ -918,7 +918,7 @@ screens:
   - id: e4_stuck
     stage: stage4_attest
     stepLabel: "<b>Шаг 4 из 6 · Аттестации и завершение класса</b>"
-    image: "shots/e1-4-diagnostics-panel.jpg"
+    image: "shots/finish-class-check.jpg"
     text: |-
       Обычно дело в одном из двух:
       • не закрыт какой-то предмет;
@@ -935,7 +935,7 @@ screens:
   - id: e5_1
     stage: stage5_certificate
     stepLabel: "<b>Шаг 5 из 6 · Итоговая справка</b>"
-    image: "shots/e2-5-archive-tower.jpg"
+    image: "shots/grades-certificate.jpg"
     text: |-
       ✦ <b>Класс завершён!</b>
 
@@ -952,7 +952,7 @@ screens:
   - id: e5_wait
     stage: stage5_certificate
     stepLabel: "<b>Шаг 5 из 6 · Итоговая справка</b>"
-    image: "shots/e2-wait-countdown.jpg"
+    image: "shots/grades-certificate-soon.jpg"
     text: |-
       Хорошо, загляну через пару дней.
 
@@ -973,7 +973,7 @@ screens:
   - id: e6_1
     stage: stage6_renewal
     stepLabel: "<b>Шаг 6 из 6 · Продление со скидкой</b>"
-    image: "shots/g5-mcko-signup.jpg"
+    image: "shots/renewal-next-year.jpg"
     text: |-
       Пора подумать о следующем учебном годе.
 
@@ -988,7 +988,7 @@ screens:
   - id: e_done
     stage: stage6_renewal
     terminal: true
-    image: "shots/g8-summit.jpg"
+    image: "shots/year-complete.jpg"
     text: |-
       ✦ <b>Все шаги пройдены!</b>
 

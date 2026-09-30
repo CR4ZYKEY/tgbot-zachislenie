@@ -29,7 +29,7 @@ screens:
   # ✎ — даты примерные: в инструкции только месяц.
   - id: bg_map
     stage: bgia_start
-    image: "shots/g-map-graduate-road.jpg"
+    image: "shots/gia-map-two-lines.jpg"
     text: |-
       Спасибо за ответы! Впереди путь выпускника — {{#if grade11}}10{{else}}11{{/if}} шагов до аттестата.
 
@@ -488,7 +488,7 @@ screens:
   - id: bg3_1
     stage: bgia_study
     stepLabel: "<b>Шаг 3 из {{#if grade11}}10{{else}}11{{/if}} · Учёба и аттестации</b>"
-    image: "shots/g5-rooftop-library.jpg"
+    image: "shots/gia-two-tracks.jpg"
     text: >-
       Выпускной год идёт по двум линиям: аттестации на платформе и
       подготовка к {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}. Все аттестации — <b>до 1 апреля 2027</b>,
@@ -517,7 +517,7 @@ screens:
   - id: bg4_1b
     stage: bgia_apply
     stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
-    image: "shots/g4-two-letters.jpg"
+    image: "shots/gia-application-second-note.jpg"
     text: >-
       Ещё раз про заявку на {{#if grade11}}ЕГЭ и сочинение{{else}}ОГЭ и собеседование{{/if}}:
       её подают в ноябре — так экзамены пройдут в основные даты. Уже подали?
@@ -539,7 +539,7 @@ screens:
   - id: bg4_noinstr
     stage: bgia_apply
     stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
-    image: "shots/e2-3-kc-mail-rescue.jpg"
+    image: "shots/gia-curator-instruction.jpg"
     text: >-
       Инструкция приходит на e-mail родителя в ноябре. Если её нет —
       напишите куратору выпускников, он пришлёт.
@@ -551,7 +551,7 @@ screens:
   - id: bg4_notice
     stage: bgia_apply
     stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
-    image: "shots/e2-2-sent-docs-check.jpg"
+    image: "shots/gia-application-registered.jpg"
     text: >-
       Отлично! Дальше ждите уведомление о проведении — от школы на e-mail
       родителя или в mos.ru, смотря как подавали заявку.
@@ -715,7 +715,7 @@ screens:
   - id: bg7_1
     stage: bgia_finish
     stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
-    image: "shots/g5-practice-hall.jpg"
+    image: "shots/attest-last-stones.jpg"
     text: >-
       Все аттестации нужно сдать на «3» и выше и завершить класс
       <b>до 1 апреля 2027</b>. Как успехи?
@@ -728,7 +728,7 @@ screens:
   - id: bg7_2
     stage: bgia_finish
     stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
-    image: "shots/g5-practice-hall.jpg"
+    image: "shots/attest-progress-planters.jpg"
     text: >-
       Как идут аттестации? Срок — до 1 апреля 2027. Если всё сдано,
       осталось нажать «Завершить класс».
@@ -741,7 +741,7 @@ screens:
   - id: bg7_wip
     stage: bgia_finish
     stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
-    image: "shots/e2-remind-me-later.jpg"
+    image: "shots/attest-keep-going.jpg"
     text: >-
       Хорошо, загляну ещё. Если всё сдадите раньше — нажмите кнопку ниже.
     buttons:
@@ -751,7 +751,7 @@ screens:
   - id: bg7_finish
     stage: bgia_finish
     stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
-    image: "shots/e1-4-find-tile.jpg"
+    image: "shots/finish-class-button.jpg"
     text: >-
       Проверьте, что зачисление завершено (шаг 2), и нажмите «<b>Завершить
       класс</b>» в здании «Школа», над учебными предметами. Получилось?
@@ -763,7 +763,7 @@ screens:
   - id: bg7_stuck
     stage: bgia_finish
     stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
-    image: "shots/e1-4-diagnostics-panel.jpg"
+    image: "shots/finish-class-check.jpg"
     text: >-
       Чаще всего дело в незакрытом предмете или в справке о зачислении.
       Не гадайте — напишите куратору выпускников, он подскажет.
@@ -777,7 +777,7 @@ screens:
   - id: bg8_1
     stage: bgia_cert
     stepLabel: "<b>Шаг 8 из {{#if grade11}}10{{else}}11{{/if}} · Справка с оценками</b>"
-    image: "shots/e2-5-archive-tower.jpg"
+    image: "shots/grades-certificate.jpg"
     text: >-
       ✦ <b>Класс завершён!</b> Скачайте справку с оценками: «Секретариат» →
       «<b>Мои справки</b>».
@@ -789,7 +789,7 @@ screens:
   - id: bg8_wait
     stage: bgia_cert
     stepLabel: "<b>Шаг 8 из {{#if grade11}}10{{else}}11{{/if}} · Справка с оценками</b>"
-    image: "shots/e2-wait-countdown.jpg"
+    image: "shots/grades-certificate-soon.jpg"
     text: >-
       Хорошо, загляну через пару дней. Если справка появится раньше —
       нажмите кнопку ниже.
@@ -819,7 +819,7 @@ screens:
   - id: bg9_notice
     stage: bgia_exams
     stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
-    image: "shots/e2-3-school-envelope.jpg"
+    image: "shots/gia-exam-notice-arrived.jpg"
     text: "Направление на экзамен с датой и адресом пункта уже пришло?"
     buttons:
       - { label: "Да", data: bg9_notice.yes, next: bg9_day }
@@ -829,7 +829,7 @@ screens:
   - id: bg9_ask
     stage: bgia_exams
     stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
-    image: "shots/g7-ask-school-window.jpg"
+    image: "shots/gia-ask-for-notice.jpg"
     text: >-
       Направление приходит от школы на e-mail или в mos.ru. Если его нет —
       напишите куратору. Спрошу ещё раз через неделю.
@@ -902,7 +902,7 @@ screens:
   - id: bg11_1
     stage: bgia_renewal
     stepLabel: "<b>Шаг 11 из 11 · Продление в 10 класс</b>"
-    image: "shots/g5-mcko-signup.jpg"
+    image: "shots/renewal-next-year.jpg"
     text: >-
       Пора подумать о 10 классе: пакет со скидкой можно купить <b>до 31 мая
       2027</b> — льготная цена сохранится, учёба продолжится без перерыва.
