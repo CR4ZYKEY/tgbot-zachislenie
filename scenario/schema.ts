@@ -17,7 +17,10 @@ import { z } from 'zod';
 //   ждёт своей даты (путь выпускника: g6_ready, g7_1, …). Родитель остаётся
 //   на экране, у сообщения убираются кнопки ответа — дальше напишет
 //   напоминание.
-export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait'] as const;
+// - previous        — вернуться на экран, с которого пришли (как «← Назад»).
+//   Для экранов, которые напоминание показывает поверх текущего шага
+//   (продление со скидкой): ответили — и обратно к своему шагу.
+export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait', 'previous'] as const;
 
 // Обязательные системные экраны — не часть карты пути, но текст в них
 // показывается родителю, поэтому по правилу 1 CLAUDE.md тоже живёт в YAML.
@@ -47,7 +50,9 @@ export const ButtonSchema = z
     // Кнопка-ссылка (деплинк в бот КС) вместо callback — см. system.kc.
     // Плейсхолдеры {{kc_username}} / {{kc_context}} подставляет движок.
     url: z.string().min(1).optional(),
-    setField: SetFieldSchema.optional(),
+    // Одно поле или несколько: «11 класс» в «Классном» пишет и класс, и
+    // тариф «Классный Выпускник».
+    setField: z.union([SetFieldSchema, z.array(SetFieldSchema).min(1)]).optional(),
     // Файл, который бот присылает по нажатию (памятка МЦКО на g5_mcko) —
     // путь относительно assets/, как у image. Имя файла у родителя — имя
     // файла на диске, поэтому называть его по-русски и по-человечески.
@@ -112,6 +117,10 @@ export const ReminderSchema = z
     // напоминание ставится заново. Для «спрошу ещё раз через неделю», которое
     // повторяется, пока родитель не ответит (до паузы после трёх молчаний).
     rearm: z.boolean().optional(),
+    // Не отправлять, если родитель уже нажал одну из этих кнопок (callback data)
+    // — например, «Уже продлили»: напоминание о продлении больше не нужно,
+    // хотя сам шаг, на котором родитель стоит, от этого не меняется.
+    skipIfAnswered: z.array(z.string().regex(idRegex)).min(1).optional(),
     // Какой экран показать. Каждое напоминание — свой экран со своим текстом:
     // повторять слово в слово нельзя, иначе выглядит как сбой рассылки.
     screen: z.string().regex(idRegex),
@@ -205,6 +214,10 @@ export type SystemScreens = z.infer<typeof SystemScreensSchema>;
 export const ScenarioSchema = z
   .object({
     version: z.string(),
+    // Флаги для шаблонов по тарифу: {{#if hasCurator}}…{{/if}} истинно, если
+    // package родителя — один из перечисленных. Живут в сценарии, чтобы новый
+    // тариф подключался без правки кода.
+    packageFlags: z.record(z.string().regex(/^\w+$/), z.array(z.string().min(1)).min(1)).optional(),
     screens: z.array(ScreenSchema).min(1),
     system: SystemScreensSchema,
   })
@@ -277,6 +290,10 @@ export const ScenarioSchema = z
       }
     };
 
+    const allButtonData = new Set(
+      scenario.screens.flatMap((s) => [...(s.buttons ?? []), ...(s.deferButton ? [s.deferButton] : [])].map((b) => b.data ?? '')),
+    );
+
     for (const screen of scenario.screens) {
       const extra: Array<{ target: string; where: string }> = [];
       if (screen.input) extra.push({ target: screen.input.next, where: 'input.next' });
@@ -312,6 +329,16 @@ export const ScenarioSchema = z
             }
           }
         }
+        for (const [i, r] of screen.reminders.schedule.entries()) {
+          for (const v of r.skipIfAnswered ?? []) {
+            if (!allButtonData.has(v)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Экран "${screen.id}": reminders.schedule[${i}].skipIfAnswered — нет кнопки с data "${v}"`,
+              });
+            }
+          }
+        }
         for (const w of screen.reminders.waitingScreens) {
           if (!ids.has(w)) {
             ctx.addIssue({
@@ -336,21 +363,28 @@ export const ScenarioSchema = z
     }
 
     // Критерий приёмки 1 / п.4 CLAUDE.md: свободный ввод ровно в трёх местах.
-    // Отзыв о Городе — одно место по смыслу, но экранов два: E1.5b в базовом
-    // пути и его копия g1_5b в пути выпускника. Имя и телефон — строго по одному.
-    const freeInputFields = scenario.screens
-      .filter((s) => s.input)
-      .map((s) => s.input!.field);
+    // Имя и телефон — строго по одному экрану (они на общем старте). Отзыв о
+    // Городе — одно место по смыслу, но у каждой ветки тарифа своя копия
+    // этапа 1 (E1.5b, g1_5b, bg1_5b, …): копий сколько угодно, лишь бы это был
+    // один и тот же вопрос — текст у всех одинаковый.
+    const inputScreens = scenario.screens.filter((s) => s.input);
+    const freeInputFields = inputScreens.map((s) => s.input!.field);
     const allowedFields: FreeInput['field'][] = ['name', 'phone', 'city_feedback'];
-    const maxScreens: Record<FreeInput['field'], number> = { name: 1, phone: 1, city_feedback: 2 };
-    for (const field of allowedFields) {
+    for (const field of ['name', 'phone'] as const) {
       const count = freeInputFields.filter((f) => f === field).length;
-      if (count > maxScreens[field]) {
+      if (count > 1) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Поле свободного ввода "${field}" встречается ${count} раз(а) — допустимо не больше ${maxScreens[field]}`,
+          message: `Поле свободного ввода "${field}" встречается ${count} раз(а) — должно быть не больше 1`,
         });
       }
+    }
+    const feedbackTexts = new Set(inputScreens.filter((s) => s.input!.field === 'city_feedback').map((s) => s.text));
+    if (feedbackTexts.size > 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Экраны отзыва о Городе (city_feedback) должны быть копиями одного вопроса — тексты различаются',
+      });
     }
     const unexpected = freeInputFields.filter((f) => !allowedFields.includes(f));
     if (unexpected.length > 0) {

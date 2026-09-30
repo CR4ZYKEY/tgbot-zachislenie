@@ -97,6 +97,17 @@ export class RemindersService {
       return;
     }
 
+    // Родитель уже ответил на то, о чём напоминание (например, «Уже продлили»).
+    if (reminder.skipIfAnswered) {
+      const answered = await this.prisma.answer.count({
+        where: { userId: user.id, value: { in: reminder.skipIfAnswered } },
+      });
+      if (answered > 0) {
+        await this.finish(job, 'cancelled');
+        return;
+      }
+    }
+
     // Этап на паузе (три неотвеченных касания подряд) — молчим. Этап — тот,
     // о котором напоминание: календарь выпускника ставится с одного экрана,
     // но молчание про собеседование не должно глушить напоминания об экзаменах.

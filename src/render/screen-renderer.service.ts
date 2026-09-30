@@ -57,8 +57,11 @@ export class ScreenRendererService {
       name: user.name,
       // Путь выпускника: тексты ОГЭ/ЕГЭ различаются по классу — шаблон умеет
       // только {{#if флаг}}, поэтому класс 11 отдаётся отдельным флагом.
-      isGraduate: user.package === 'Выпускник',
       grade11: user.class === '11',
+      // Флаги тарифа (isGraduate, hasCurator, …) — из packageFlags сценария.
+      ...Object.fromEntries(
+        Object.entries(this.scenario.packageFlags).map(([flag, packages]) => [flag, packages.includes(user.package ?? '')]),
+      ),
     };
   }
 

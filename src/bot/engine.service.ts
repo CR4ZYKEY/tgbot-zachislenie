@@ -219,12 +219,7 @@ export class EngineService {
     const screen = this.scenario.getScreen(user.stage);
 
     if (decoded.data === '__back') {
-      const target = screen.back ?? user.historyStack[user.historyStack.length - 1];
-      if (!target) return;
-      // render() персистит historyStack как есть (pushHistory: false) — здесь
-      // только подрезаем стек перед вызовом, отдельного апдейта не нужно.
-      const poppedHistory = screen.back ? user.historyStack : user.historyStack.slice(0, -1);
-      await this.render(ctx, { ...user, historyStack: poppedHistory }, target, { pushHistory: false });
+      await this.goBack(ctx, user);
       return;
     }
 
@@ -242,16 +237,12 @@ export class EngineService {
       // Декларативная запись выбора в профиль (package/class/isReturning) —
       // без этого нажатие "Базовый"/класса/"Впервые" оставалось бы только
       // строкой в answers, а сами поля users так и не заполнялись.
-      const { field, value } = button.setField;
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data:
-          field === 'isReturning'
-            ? { isReturning: value === 'true' }
-            : field === 'package'
-              ? { package: value }
-              : { class: value },
-      });
+      const data: { isReturning?: boolean; package?: string; class?: string } = {};
+      for (const { field, value } of [button.setField].flat()) {
+        if (field === 'isReturning') data.isReturning = value === 'true';
+        else data[field] = value;
+      }
+      await this.prisma.user.update({ where: { id: user.id }, data });
     }
 
     // Кнопка с файлом (памятка МЦКО): присылаем документ. Без next родитель
@@ -272,6 +263,17 @@ export class EngineService {
     }
 
     await this.dispatch(ctx, user, button.next!);
+  }
+
+  // «← Назад»: screen.back, если он задан в сценарии, иначе прошлый экран
+  // из истории. render() персистит historyStack как есть (pushHistory:
+  // false) — здесь только подрезаем стек перед вызовом.
+  private async goBack(ctx: Context, user: User): Promise<void> {
+    const screen = this.scenario.getScreen(user.stage);
+    const target = screen.back ?? user.historyStack[user.historyStack.length - 1];
+    if (!target) return;
+    const poppedHistory = screen.back ? user.historyStack : user.historyStack.slice(0, -1);
+    await this.render(ctx, { ...user, historyStack: poppedHistory }, target, { pushHistory: false });
   }
 
   private findButton(screen: ReturnType<ScenarioService['getScreen']>, data: string, user: User): Button | undefined {
@@ -299,6 +301,14 @@ export class EngineService {
     }
     if (target === 'wait') {
       await this.acknowledgeAndWait(ctx, user);
+      return;
+    }
+    if (target === 'previous') {
+      // Не screen.back, а реальный предыдущий экран из истории: сюда приходят
+      // напоминанием поверх любого шага, и вернуться нужно именно на него.
+      const prev = user.historyStack[user.historyStack.length - 1];
+      if (!prev) return;
+      await this.render(ctx, { ...user, historyStack: user.historyStack.slice(0, -1) }, prev, { pushHistory: false });
       return;
     }
     if (isSystemKey(target)) {

@@ -1,0 +1,909 @@
+# Тариф «Классный Выпускник», 9 и 11 класс — «Путь выпускника с сопровождением ЦПСО».
+# Источник: ЭдПалм_Классный-Выпускник_9-класс / 11-класс_Путь-выпускника (2026/2027).
+#
+# Вход: s3 «Классный» → k_class «9 / 11 класс» → kg_s5.
+# С другими ветками не пересекается: шаги 1–2 — свои копии этапов 1–2
+# «Базового» (помощь — куратор выпускников, t.me/giahssc_bot), дальше
+# шаги 3–10 (у 9 класса ещё 11 — продление в 10 класс).
+# Выпускной год идёт по двум линиям: аттестации на платформе (до 01.04.2027)
+# и мероприятия ГИА (заявка в ноябре, допуск, экзамены).
+#
+# Тексты ОГЭ/ЕГЭ и число шагов (11 у 9 класса, 10 у 11) — через
+# {{#if grade11}}…{{else}}…{{/if}}: grade11 движок берёт из поля class.
+
+screens:
+
+  - id: kg_s5
+    stage: kvyp_start
+    image: "shots/s5-garden-fork.jpg"
+    text: "Вы у нас впервые или уже учились?"
+    buttons:
+      - { label: "Впервые", data: kg_s5.new, next: kg_map, setField: { field: isReturning, value: "false" } }
+      - { label: "Уже учились", data: kg_s5.ret, next: kg_map, setField: { field: isReturning, value: "true" } }
+    back: k_class
+
+  # Календарь ставится здесь: через kg_map проходят все родители тарифа, класс
+  # уже известен (forClass). Напоминание уходит, только если в свой день
+  # родитель ещё на шагах из waitingScreens этой даты. minDaysFromStart: 0 —
+  # это дедлайны ГИА, правило «не ближе 14 дней от старта» для них отключено.
+  # ✎ — даты примерные: в инструкции только месяц.
+  - id: kg_map
+    stage: kvyp_start
+    image: "shots/g-map-graduate-road.jpg"
+    text: |-
+      Спасибо за ответы! Впереди путь выпускника — {{#if grade11}}10{{else}}11{{/if}} шагов до аттестата.
+
+      <b>1. Доступ к платформе</b> — после оплаты
+      <b>2. Зачисление в школу</b> — сентябрь
+      <b>3. Учёба и аттестации</b> — до 1 апреля 2027
+      <b>4. Заявка на {{#if grade11}}ЕГЭ и сочинение{{else}}ОГЭ и собеседование{{/if}}</b> — ноябрь 2026
+      <b>5. Расписание экзаменов</b> — декабрь 2026
+      <b>6. {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b> — {{#if grade11}}2 декабря 2026{{else}}10 февраля 2027{{/if}}
+      <b>7. Завершение класса</b> — до 1 апреля 2027
+      <b>8. Справка с оценками</b> — после завершения класса
+      <b>9. {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b> — весна – лето 2027
+      <b>10. Аттестат</b> — лето 2027{{#if grade11}}{{else}}
+      <b>11. Продление в 10 класс</b> — до 31 мая 2027{{/if}}
+
+      Рядом наставник — он ведёт подготовку и учебный план — и куратор выпускников: документы, заявления, школа прикрепления.
+    reminders:
+      waitingScreens: [kg_map]
+      schedule:
+        # Заявка на ГИА — ноябрь.
+        - { at: "2026-11-02", minDaysFromStart: 0, screen: kg4_1, waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_wait, kg4_noinstr] }
+        - { at: "2026-11-16", minDaysFromStart: 0, screen: kg4_1b, waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_wait, kg4_noinstr, kg4_1b] }
+        # 11: сочинение 02.12, результат через 7 рабочих дней.
+        - { at: "2026-11-25", minDaysFromStart: 0, forClass: ["11"], screen: kg6_1, waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_wait, kg4_noinstr, kg4_1b, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait] }
+        - { at: "2026-12-11", minDaysFromStart: 0, forClass: ["11"], screen: kg6_result, waitingScreens: [kg5_wait, kg5_dates, kg6_ready, kg6_nonotice, kg6_retry] }
+        # ✎ Расписание ГИА — «декабрь 2026».
+        - { at: "2026-12-15", minDaysFromStart: 0, screen: kg5_dates, waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_wait, kg4_noinstr, kg4_1b, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg6_ready, kg6_nonotice, kg6_retry, kg7_0, kg7_1, kg7_wip] }
+        # 9: собеседование 10.02, результат через 7 рабочих дней.
+        - { at: "2027-02-03", minDaysFromStart: 0, forClass: ["9"], screen: kg6_1, waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_wait, kg4_noinstr, kg4_1b, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg5_dates] }
+        - { at: "2027-02-19", minDaysFromStart: 0, forClass: ["9"], screen: kg6_result, waitingScreens: [kg6_ready, kg6_nonotice, kg6_retry] }
+        # Аттестации и завершение класса — до 01.04.
+        - { at: "2027-03-01", minDaysFromStart: 0, screen: kg7_1, waitingScreens: [kg3_1, kg4_1, kg4_1b, kg4_wait, kg4_noinstr, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg5_dates, kg7_0, kg7_wip, kg11_1] }
+        - { at: "2027-03-15", minDaysFromStart: 0, screen: kg7_2, waitingScreens: [kg3_1, kg4_1, kg4_1b, kg4_wait, kg4_noinstr, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg5_dates, kg7_0, kg7_wip, kg11_1, kg7_1] }
+        # ✎ Направление на экзамен — за 14 дней до первого.
+        - { at: "2027-05-12", minDaysFromStart: 0, screen: kg9_notice, waitingScreens: [kg7_0, kg7_1, kg7_2, kg7_wip, kg7_finish, kg7_stuck, kg8_1, kg8_wait, kg9_1] }
+        # ✎ Результаты экзаменов.
+        - { at: "2027-07-01", minDaysFromStart: 0, screen: kg9_results, waitingScreens: [kg9_1, kg9_notice, kg9_ask, kg9_day] }
+        # 9: продление в 10 класс — до 31.05, поверх любого шага.
+        - { at: "2027-04-30", forClass: ["9"], screen: kg11_1, skipIfAnswered: [kg11_1.done], waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_1b, kg4_wait, kg4_noinstr, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg5_dates, kg6_1, kg6_ready, kg6_nonotice, kg6_result, kg6_retry, kg7_0, kg7_1, kg7_2, kg7_wip, kg7_finish, kg7_stuck, kg8_1, kg8_wait, kg9_1, kg9_notice, kg9_ask, kg9_day, kg9_results, kg10_1, kg11_1] }
+        - { at: "2027-05-20", forClass: ["9"], screen: kg11_1, skipIfAnswered: [kg11_1.done], waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_1b, kg4_wait, kg4_noinstr, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg5_dates, kg6_1, kg6_ready, kg6_nonotice, kg6_result, kg6_retry, kg7_0, kg7_1, kg7_2, kg7_wip, kg7_finish, kg7_stuck, kg8_1, kg8_wait, kg9_1, kg9_notice, kg9_ask, kg9_day, kg9_results, kg10_1, kg11_1] }
+        - { at: "2027-05-29", forClass: ["9"], screen: kg11_1, skipIfAnswered: [kg11_1.done], waitingScreens: [kg2_6, kg3_1, kg4_1, kg4_1b, kg4_wait, kg4_noinstr, kg4_notice, kg5_1, kg5_mcko, kg5_res, kg5_wait, kg5_dates, kg6_1, kg6_ready, kg6_nonotice, kg6_result, kg6_retry, kg7_0, kg7_1, kg7_2, kg7_wip, kg7_finish, kg7_stuck, kg8_1, kg8_wait, kg9_1, kg9_notice, kg9_ask, kg9_day, kg9_results, kg10_1, kg11_1] }
+    buttons:
+      - { label: "Начинаем", data: kg_map.go, next: kg1_1 }
+    back: kg_s5
+
+  # ─────────── Шаги 1–2. Доступ к платформе и зачисление ───────────
+  # Копия этапов 1–2 «Базового»: тот же порядок экранов и ветки помощи,
+  # только помощь — куратор выпускников. Правятся независимо от «Базового».
+
+  - id: kg1_1
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-1-key-at-gate.jpg"
+    text: >-
+      {{#if isReturning}}Вы уже учились у нас, так что войти можно
+      по прежним данным. Получилось?{{else}}Вам должны были прислать
+      логин и пароль от платформы — письмом на почту плательщика,
+      в день оплаты. Письмо пришло?{{/if}}
+    buttons:
+      - { label: "Да", data: kg1_1.yes, next: kg1_3 }
+      - { label: "Нет", data: kg1_1.no, next: kg1_2 }
+    back: kg_map
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: kg1.defer, next: kg2_0 }
+
+  - id: kg1_2
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-2-lost-mail-search.jpg"
+    text: >-
+      Такие письма иногда улетают в спам. Загляните в папку «Спам» —
+      возможно, оно там.
+    buttons:
+      - { label: "Нашёл", data: kg1_2.found, next: kg1_3 }
+      - { label: "Там пусто", data: kg1_2.empty, next: kg1_2a }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: kg1.defer, next: kg2_0 }
+
+  - id: kg1_2a
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-2a-support-help.jpg"
+    text: >-
+      Похоже, письмо не приходило. Не переживайте — куратор выпускников
+      поможет разобраться.
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Я разберусь позже", data: kg1_2a.later, next: kg2_0 }
+    menu: true
+
+  - id: kg1_3
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-3-gate-opens.jpg"
+    text: "Теперь попробуйте войти на платформу по этим данным. Получилось?"
+    buttons:
+      - { label: "Да, я внутри", data: kg1_3.yes, next: kg1_5 }
+      - { label: "Не получается", data: kg1_3.no, next: kg1_4 }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: kg1.defer, next: kg2_0 }
+
+  - id: kg1_4
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-4-diagnostics-panel.jpg"
+    text: "Расскажите, что не так — так будет проще помочь."
+    buttons:
+      - { label: "Не подходит пароль", data: kg1_4.password, next: kg1_4_password }
+      - { label: "Страница не открывается", data: kg1_4.page, next: kg1_4_page }
+      - { label: "Не понимаю, куда нажимать", data: kg1_4.confused, next: kg1_4_confused }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: kg1.defer, next: kg2_0 }
+
+  - id: kg1_4_password
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-4-fix-on-site.jpg"
+    text: >-
+      ✎ {{#if isReturning}}Пароль можно восстановить в личном кабинете или нажать
+      «Забыли пароль» на странице входа — новый придёт на ту же почту.{{else}}Попробуйте
+      нажать «Забыли пароль» на странице входа — новый придёт на ту же почту.{{/if}}
+    buttons:
+      - { label: "Да", data: kg1_4_password.yes, next: kg1_5 }
+      - { label: "Нет, напишу куратору", url: "https://t.me/giahssc_bot" }
+
+  - id: kg1_4_page
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-4-page-refresh.jpg"
+    text: "✎ Попробуйте обновить страницу или открыть её в другом браузере — обычно это помогает."
+    buttons:
+      - { label: "Да", data: kg1_4_page.yes, next: kg1_5 }
+      - { label: "Нет, напишу куратору", url: "https://t.me/giahssc_bot" }
+
+  - id: kg1_4_confused
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-4-find-tile.jpg"
+    text: "✎ После входа найдите и нажмите на плитку в центре экрана — это и есть вход в Город."
+    buttons:
+      - { label: "Да", data: kg1_4_confused.yes, next: kg1_5 }
+      - { label: "Нет, напишу куратору", url: "https://t.me/giahssc_bot" }
+
+  - id: kg1_5
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-5-first-city-reveal.jpg"
+    text: "Вот вы и в Городе — так выглядит платформа изнутри. Как вам первое впечатление?"
+    buttons:
+      - { label: "Нравится", data: kg1_5.like, next: kg1_6 }
+      - { label: "Пока непонятно", data: kg1_5.unclear, next: kg1_5b }
+    menu: true
+
+  - id: kg1_5b
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-5b-thought-bubble.jpg"
+    text: "Что смущает? Опишите в двух словах — учтём."
+    input:
+      field: city_feedback
+      next: kg1_5c
+      validation: none
+
+  - id: kg1_5c
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-5c-lighthouse-guide.jpg"
+    text: >-
+      Спасибо за отзыв! Освоиться помогает экскурсия по Городу —
+      пройдите её вместе с героем, будет проще.
+    buttons:
+      - { label: "Спасибо, посмотрю", data: kg1_5c.ok, next: kg1_6 }
+
+  - id: kg1_6
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-6-school-building.jpg"
+    text: >-
+      Зайдите в здание «<b>Школа</b>» → кабинет «Информация для старта» —
+      там весь гайд по обучению: как устроена платформа, сроки
+      обучения и аттестаций, правила оценок.
+    buttons:
+      - { label: "Нашёл", data: kg1_6.found, next: kg1_7 }
+      - { label: "Не нашёл", data: kg1_6.notfound, next: kg1_6b }
+    menu: true
+    deferButton: { label: "Зайду на платформу позже — к зачислению", data: kg1.defer, next: kg2_0 }
+
+  - id: kg1_6b
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    text: >-
+      Откройте здание «<b>Школа</b>», затем кабинет «Информация для
+      старта» — вот как это выглядит.
+    image: "✎ shots/e1_6b_school_info.png"
+    buttons:
+      - { label: "Дальше", data: kg1_6b.ok, next: kg1_7 }
+
+  - id: kg1_7
+    stage: kvyp_access
+    stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
+    image: "shots/e1-7-access-open.jpg"
+    text: >-
+      ✦ <b>Доступ открыт.</b> Вы разобрались, как всё устроено, —
+      ваш герой готов приступить к занятиям.
+    buttons:
+      - { label: "Дальше — к зачислению", data: kg1_7.next, next: kg2_0 }
+
+
+  - id: kg2_0
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-0-two-archways.jpg"
+    text: |-
+      Переходим к официальному зачислению — рекомендуем уложиться в 10 дней. Не потому что что-то пропадёт, а потому что справка готовится не мгновенно.
+
+      Дальше вас ждут два этапа:
+      <b>1. Личные документы</b> — то, что нужно отправить от вас.
+      <b>2. Подписание документов со школой</b> — школа пришлёт документы, вам останется их подписать.
+
+      Расскажу подробно про каждый — начнём с первого.
+    buttons:
+      - { label: "Понятно, начинаем", data: kg2_0.ok, next: kg2_1 }
+    back: kg_map
+    menu: true
+
+  - id: kg2_1
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-1-document-scroll.jpg"
+    text: "Вам должно было прийти письмо со списком необходимых документов. Оно пришло?"
+    buttons:
+      - { label: "Да", data: kg2_1.yes, next: kg2_2 }
+      - { label: "Нет", data: kg2_1.no, next: kg2_1_spam }
+      - { label: "Пока пройду шаг с платформой", data: kg2_1.to_stage1, next: kg1_1 }
+    menu: true
+
+  - id: kg2_1_spam
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e1-2-lost-mail-search.jpg"
+    text: >-
+      Такие письма иногда улетают в спам. Загляните в папку «Спам» —
+      возможно, оно там.
+    buttons:
+      - { label: "Нашёл", data: kg2_1_spam.found, next: kg2_2 }
+      - { label: "Там пусто", data: kg2_1_spam.empty, next: kg2_1_kc }
+    menu: true
+
+  - id: kg2_1_kc
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e1-2a-support-help.jpg"
+    text: >-
+      Похоже, письмо не приходило. Не переживайте — куратор выпускников
+      поможет разобраться.
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Я разберусь позже", data: kg2_1_kc.later, next: kg2_2 }
+    menu: true
+
+  - id: kg2_2
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-2-mail-drone.jpg"
+    text: >-
+      {{#if isReturning}}Раз вы уже учились у нас, нужны только
+      недостающие документы — то, чего не хватало в прошлый раз.
+      Вы их отправили?{{else}}Соберите документы по списку из письма
+      и отправьте их по инструкции — этого шага не миновать. Уже
+      отправили?{{/if}}
+    buttons:
+      - { label: "Да, отправил", data: kg2_2.yes, next: kg2_2_sent }
+      - { label: "Ещё нет", data: kg2_2.no, next: kg2_2a }
+    menu: true
+
+  - id: kg2_2_sent
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-2-sent-docs-check.jpg"
+    text: |-
+      Документы получены — забрали их в работу. Сейчас проверяем, всё ли на месте.
+
+      Ответ придёт вам <b>на почту</b>: если всё в порядке, следующим письмом будут документы на подпись. Я загляну напомнить, чтобы письмо не потерялось.
+    reminders:
+      waitingScreens: [kg2_2_sent, kg2_3, kg2_3_spam, kg2_3_wait, kg2_3_ping2, kg2_3_kc]
+      schedule:
+        - { afterHours: 24, screen: kg2_3 }
+        - { afterHours: 48, screen: kg2_3_ping2 }
+    buttons:
+      - { label: "Проверить почту сейчас", data: kg2_2_sent.check, next: kg2_3 }
+    menu: true
+
+  - id: kg2_2a
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-2a-checklist-question.jpg"
+    text: "Расскажите, что мешает — разберёмся вместе."
+    buttons:
+      - { label: "Не хватает документа", data: kg2_2a.missing_doc, next: kg2_2a_missing }
+      - { label: "Не понял, что нужно", data: kg2_2a.unclear_list, next: kg2_2a_list }
+      - { label: "Не понял, куда слать", data: kg2_2a.unclear_where, next: kg2_2a_where }
+      - { label: "Нужно время", data: kg2_2a.need_time, next: kg2_2a_time }
+
+  - id: kg2_2a_missing
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-2a-missing-detail.jpg"
+    text: >-
+      ✎ Часто дело в мелочах: документ оформлен не на того родителя,
+      нет прописки, устаревшее фото. Не уверены, что собрали весь комплект, —
+      пришлите список куратору, он проверит.
+    buttons:
+      - { label: "Разобрался", data: kg2_2a_missing.ok, next: kg2_2 }
+      - { label: "Нужна помощь куратора", url: "https://t.me/giahssc_bot" }
+
+  - id: kg2_2a_list
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-2a-document-sorting.jpg"
+    text: |-
+      Вот что нужно сделать:
+      1) Откройте письмо со списком документов.
+      2) Сверьте его с чек-листом на платформе.
+      3) Соберите всё одним архивом.
+    buttons:
+      - { label: "Понятно", data: kg2_2a_list.ok, next: kg2_2 }
+
+  - id: kg2_2a_where
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-2a-where-to-send.jpg"
+    text: |-
+      Вот куда их отправить:
+      1) Зайдите в <b>Секретариат</b>.
+      2) Откройте «<b>Загрузка документов</b>».
+      3) Прикрепите файлы и нажмите «Отправить».
+    buttons:
+      - { label: "Понятно", data: kg2_2a_where.ok, next: kg2_2 }
+
+  - id: kg2_2a_time
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-remind-me-later.jpg"
+    text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
+    buttons:
+      - { label: "Напомнить завтра", data: kg2_2a_time.tomorrow, next: kg2_2 }
+      - { label: "Через 3 дня", data: kg2_2a_time.in3days, next: kg2_2 }
+
+  - id: kg2_3
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-3-school-envelope.jpg"
+    text: >-
+      Загляните в почту: пришло ли письмо от нас с документами
+      на подпись?
+    buttons:
+      - { label: "Да, пришло", data: kg2_3.yes, next: kg2_4 }
+      - { label: "Письма нет", data: kg2_3.no, next: kg2_3_spam }
+    menu: true
+
+  - id: kg2_3_spam
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-3-spam-folders.jpg"
+    text: |-
+      Загляните в папки <b>«Спам»</b> и <b>«Промоакции»</b> — письма с вложениями часто уезжают туда.
+
+      И проверьте, что смотрите тот же ящик, на который оформляли оплату.
+    buttons:
+      - { label: "Нашёл письмо", data: kg2_3_spam.found, next: kg2_4 }
+      - { label: "Там тоже пусто", data: kg2_3_spam.empty, next: kg2_3_wait }
+
+  - id: kg2_3_wait
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-wait-countdown.jpg"
+    text: >-
+      Хорошо, подожду вместе с вами — загляну ещё раз позже.
+      Если письмо появится раньше, нажмите кнопку ниже.
+    buttons:
+      - { label: "Письмо пришло", data: kg2_3_wait.found, next: kg2_4 }
+    menu: true
+
+  - id: kg2_3_ping2
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-3-ping2-second-look.jpg"
+    text: >-
+      Ещё раз про письмо со школьными документами — оно так и не
+      появилось? Проверьте и входящие, и папку со спамом.
+    buttons:
+      - { label: "Да, пришло", data: kg2_3_ping2.yes, next: kg2_4 }
+      - { label: "Так и не пришло", data: kg2_3_ping2.no, next: kg2_3_kc }
+    menu: true
+
+  - id: kg2_3_kc
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-3-kc-mail-rescue.jpg"
+    text: >-
+      Похоже, письмо действительно не дошло. Напишите куратору
+      выпускников — он поможет разобраться с почтой.
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Письмо всё-таки нашлось", data: kg2_3_kc.found, next: kg2_4 }
+    menu: true
+
+  - id: kg2_4
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-4-glowing-quill.jpg"
+    text: |-
+      Подпишите документы. Отправьте сканированные копии или качественные фотографии через кнопку из письма.
+
+      <i>Не отправляйте ответным письмом — мы не сможем их получить.</i>
+    buttons:
+      - { label: "Направил", data: kg2_4.yes, next: kg2_5 }
+      - { label: "Ещё нет", data: kg2_4.no, next: kg2_4_wait }
+    menu: true
+
+  - id: kg2_4_wait
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-remind-me-later.jpg"
+    text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
+    buttons:
+      - { label: "Напомнить завтра", data: kg2_4_wait.tomorrow, next: kg2_4 }
+      - { label: "Через 3 дня", data: kg2_4_wait.in3days, next: kg2_4 }
+
+  - id: kg2_5
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/e2-5-archive-tower.jpg"
+    text: >-
+      Готово! Дальше всё делаем мы: справка о зачислении появится в
+      <b>Секретариате</b> → «<b>Справки</b>» после подписания всех документов.
+    buttons:
+      - { label: "Что дальше?", data: kg2_5.next, next: kg2_6 }
+
+  - id: kg2_6
+    stage: kvyp_enrollment
+    stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
+    image: "shots/g2-6-enrolled-badge.jpg"
+    text: >-
+      ✦ <b>Зачисление пройдено.</b> Два шага позади — ваш герой
+      официально в нашей школе.
+    buttons:
+      - { label: "Дальше — учёба и ГИА", data: kg2_6.next, next: kg3_1 }
+    menu: true
+
+  # ─────────── Шаг 3. Учёба и аттестации (до 1 апреля 2027) ───────────
+
+  - id: kg3_1
+    stage: kvyp_study
+    stepLabel: "<b>Шаг 3 из {{#if grade11}}10{{else}}11{{/if}} · Учёба и аттестации</b>"
+    image: "shots/g5-rooftop-library.jpg"
+    text: >-
+      Выпускной год идёт по двум линиям: аттестации на платформе и
+      подготовка к {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}. Все аттестации — <b>до 1 апреля 2027</b>,
+      на два месяца раньше обычного. Учебный план ведёт наставник, а если не успеваете по графику — скажите заранее, а не в марте.
+    buttons:
+      - { label: "Понятно", data: kg3_1.ok, next: kg4_1 }
+    menu: true
+
+  # ─────────── Шаг 4. Заявка на ОГЭ/ЕГЭ и собеседование/сочинение (ноябрь) ───────────
+  # kg4_1 — и шаг по цепочке, и напоминание 02.11; kg4_1b — второе, 16.11.
+
+  - id: kg4_1
+    stage: kvyp_apply
+    stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g4-two-letters.jpg"
+    text: >-
+      В ноябре — заявка на {{#if grade11}}ЕГЭ и итоговое сочинение{{else}}ОГЭ и итоговое
+      собеседование{{/if}}. Инструкцию по регистрации пришлёт школа или куратор
+      на e-mail родителя. Заявку уже подали?
+    buttons:
+      - { label: "Да, подали", data: kg4_1.yes, next: kg4_notice }
+      - { label: "Ещё нет", data: kg4_1.no, next: kg4_wait }
+      - { label: "Инструкции нет", data: kg4_1.noinstr, next: kg4_noinstr }
+    menu: true
+
+  - id: kg4_1b
+    stage: kvyp_apply
+    stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g4-two-letters.jpg"
+    text: >-
+      Ещё раз про заявку на {{#if grade11}}ЕГЭ и сочинение{{else}}ОГЭ и собеседование{{/if}}:
+      её подают в ноябре — так экзамены пройдут в основные даты. Уже подали?
+    buttons:
+      - { label: "Да, подали", data: kg4_1b.yes, next: kg4_notice }
+      - { label: "Ещё нет", data: kg4_1b.no, next: kg4_wait }
+      - { label: "Инструкции нет", data: kg4_1b.noinstr, next: kg4_noinstr }
+    menu: true
+
+  - id: kg4_wait
+    stage: kvyp_apply
+    stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g4-calendar-board.jpg"
+    text: "Хорошо. Заявку подают в ноябре — я напомню, когда придёт время."
+    buttons:
+      - { label: "Уже подали", data: kg4_wait.done, next: kg4_notice }
+    menu: true
+
+  - id: kg4_noinstr
+    stage: kvyp_apply
+    stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/e2-3-kc-mail-rescue.jpg"
+    text: >-
+      Инструкция приходит на e-mail родителя в ноябре. Если её нет —
+      напишите куратору выпускников, он пришлёт.
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Инструкция пришла", data: kg4_noinstr.ok, next: kg4_1 }
+    menu: true
+
+  - id: kg4_notice
+    stage: kvyp_apply
+    stepLabel: "<b>Шаг 4 из {{#if grade11}}10{{else}}11{{/if}} · Заявка на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/e2-2-sent-docs-check.jpg"
+    text: >-
+      Отлично! Дальше ждите уведомление о проведении — от школы на e-mail
+      родителя или в mos.ru, смотря как подавали заявку.
+    buttons:
+      - { label: "Понятно", data: kg4_notice.ok, next: kg5_1 }
+    menu: true
+
+  # ─────────── Шаг 5. Расписание и подготовка (декабрь) ───────────
+
+  - id: kg5_1
+    stage: kvyp_prep
+    stepLabel: "<b>Шаг 5 из {{#if grade11}}10{{else}}11{{/if}} · Расписание и подготовка</b>"
+    image: "shots/g5-practice-hall.jpg"
+    text: >-
+      Расписание {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} Рособрнадзор публикует в декабре — я напомню.
+      Подготовку ведёт наставник, а пробный экзамен в МЦКО поможет заранее увидеть бланки и тайминг.
+    buttons:
+      - { label: "Как записаться на пробник", data: kg5_1.mcko, next: kg5_mcko }
+      - { label: "Где готовиться", data: kg5_1.res, next: kg5_res }
+      - { label: "Понятно", data: kg5_1.ok, next: kg5_wait }
+    menu: true
+
+  - id: kg5_mcko
+    stage: kvyp_prep
+    stepLabel: "<b>Шаг 5 из {{#if grade11}}10{{else}}11{{/if}} · Расписание и подготовка</b>"
+    image: "shots/g5-mcko-signup.jpg"
+    text: >-
+      Запись — на сайте <b>cnd.mcko.ru</b>, раздел «Индивидуальная диагностика».
+      Диагностика платная, оплатить заявку нужно за 72 часа. Пошаговая
+      инструкция — по кнопке ниже.
+    buttons:
+      - { label: "Получить инструкцию", data: kg5_mcko.memo, document: "docs/Запись на пробный экзамен МЦКО.pdf" }
+      - { label: "Понятно", data: kg5_mcko.ok, next: kg5_1 }
+      - { label: "Нужна помощь", url: "https://t.me/giahssc_bot" }
+    menu: true
+
+  - id: kg5_res
+    stage: kvyp_prep
+    stepLabel: "<b>Шаг 5 из {{#if grade11}}10{{else}}11{{/if}} · Расписание и подготовка</b>"
+    image: "shots/g5-rooftop-library.jpg"
+    text: "Проверенные ресурсы для подготовки — выбирайте нужный."
+    buttons:
+      - { label: "Рособрнадзор", url: "https://obrnadzor.gov.ru/gia/" }
+      - { label: "Банк заданий ФИПИ", url: "{{#if grade11}}https://fipi.ru/ege/otkrytyy-bank-zadaniy-ege{{else}}https://fipi.ru/oge/otkrytyy-bank-zadaniy-oge{{/if}}" }
+      - { label: "{{#if grade11}}Решу ЕГЭ{{else}}Решу ОГЭ{{/if}}", url: "{{#if grade11}}https://ege.sdamgia.ru{{else}}https://oge.sdamgia.ru{{/if}}" }
+      - { label: "Понятно", data: kg5_res.ok, next: kg5_1 }
+    menu: true
+
+  - id: kg5_wait
+    stage: kvyp_prep
+    stepLabel: "<b>Шаг 5 из {{#if grade11}}10{{else}}11{{/if}} · Расписание и подготовка</b>"
+    image: "shots/g5-wait-next-beacon.jpg"
+    text: >-
+      Договорились. Следующая важная дата — {{#if grade11}}итоговое сочинение
+      2 декабря{{else}}итоговое собеседование 10 февраля{{/if}}. Напишу ближе к ней.
+    menu: true
+
+  # ✎ ≈ 15.12 — в инструкции только «декабрь 2026». «Готово» оставляет на
+  # месте: к этому времени у 11 класса сочинение позади.
+  - id: kg5_dates
+    stage: kvyp_prep
+    stepLabel: "<b>Шаг 5 из {{#if grade11}}10{{else}}11{{/if}} · Расписание и подготовка</b>"
+    image: "shots/g5-timetable-board.jpg"
+    text: >-
+      Рособрнадзор опубликовал расписание {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}. Посмотрите даты
+      по своим предметам и внесите их в семейный календарь — ориентируйтесь
+      только на официальный источник.
+    buttons:
+      - { label: "Открыть расписание", url: "https://obrnadzor.gov.ru/gia/" }
+      - { label: "Готово", data: kg5_dates.ok, next: wait }
+    menu: true
+
+  # ─────────── Шаг 6. Допуск: собеседование (9) / сочинение (11) ───────────
+  # 11 класс — первая среда декабря (02.12.2026), 9 — вторая среда февраля
+  # (10.02.2027). Результат — через 7 рабочих дней.
+
+  - id: kg6_1
+    stage: kvyp_admission
+    stepLabel: "<b>Шаг 6 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
+    image: "shots/g6-1-date-approaching.jpg"
+    text: >-
+      Скоро {{#if grade11}}итоговое сочинение — 2 декабря{{else}}итоговое собеседование —
+      10 февраля{{/if}}, очно в школе прикрепления. Уведомление о проведении пришло?
+    buttons:
+      - { label: "Да", data: kg6_1.yes, next: kg6_ready }
+      - { label: "Нет", data: kg6_1.no, next: kg6_nonotice }
+    menu: true
+
+  - id: kg6_ready
+    stage: kvyp_admission
+    stepLabel: "<b>Шаг 6 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
+    image: "shots/g6-admission-trial.jpg"
+    text: >-
+      Отлично. В этот день возьмите документ, удостоверяющий личность.
+      Результат появится через 7 рабочих дней — я спрошу, как прошло.
+    buttons:
+      - { label: "Понятно", data: kg6_ready.ok, next: wait }
+    menu: true
+
+  - id: kg6_nonotice
+    stage: kvyp_admission
+    stepLabel: "<b>Шаг 6 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
+    image: "shots/g7-ask-school-window.jpg"
+    text: >-
+      Уведомление приходит от школы на e-mail или в mos.ru. Если его нет —
+      напишите куратору выпускников, он проверит заявку.
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Уведомление пришло", data: kg6_nonotice.ok, next: kg6_ready }
+    menu: true
+
+  # Спрашивает календарь (через 7 рабочих дней) и сам себя каждые 3 дня,
+  # пока ответа нет (rearm).
+  - id: kg6_result
+    stage: kvyp_admission
+    stepLabel: "<b>Шаг 6 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
+    image: "shots/g6-sealed-envelope.jpg"
+    text: >-
+      Как прошло {{#if grade11}}сочинение{{else}}собеседование{{/if}}? Результат появляется
+      через 7 рабочих дней.
+    reminders:
+      waitingScreens: [kg6_result]
+      schedule:
+        - { afterHours: 72, screen: kg6_result, rearm: true }
+    buttons:
+      - { label: "Зачёт", data: kg6_result.pass, next: kg7_0 }
+      - { label: "Незачёт", data: kg6_result.fail, next: kg6_retry }
+      - { label: "Ещё не знаем", data: kg6_result.unknown, next: wait }
+    menu: true
+
+  - id: kg6_retry
+    stage: kvyp_admission
+    stepLabel: "<b>Шаг 6 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b>"
+    image: "shots/g6-retry-second-try.jpg"
+    text: >-
+      Такое бывает, это поправимо: есть резервные даты. Куратор выпускников
+      поможет записаться и подскажет, что делать дальше.
+    reminders:
+      waitingScreens: [kg6_retry]
+      schedule:
+        - { afterHours: 336, screen: kg6_result }
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Понятно", data: kg6_retry.ok, next: wait }
+    menu: true
+
+  # ─────────── Шаг 7. Завершение класса (до 1 апреля 2027) ───────────
+  # kg7_1 — и по цепочке, и напоминание 01.03; kg7_2 — 15.03.
+
+  - id: kg7_0
+    stage: kvyp_finish
+    stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
+    image: "shots/g7-1-admission-granted.jpg"
+    text: >-
+      ✦ <b>Допуск получен!</b> {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} — по графику Рособрнадзора,
+      а до этого — аттестации на платформе.
+    buttons:
+      - { label: "Дальше", data: kg7_0.ok, next: kg7_1 }
+    menu: true
+
+  - id: kg7_1
+    stage: kvyp_finish
+    stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
+    image: "shots/g5-practice-hall.jpg"
+    text: >-
+      Все аттестации нужно сдать на «3» и выше и завершить класс
+      <b>до 1 апреля 2027</b>. Как успехи?
+    buttons:
+      - { label: "Все сданы", data: kg7_1.done, next: kg7_finish }
+      - { label: "Ещё в процессе", data: kg7_1.wip, next: kg7_wip }
+      - { label: "Нужна помощь", url: "https://t.me/giahssc_bot" }
+    menu: true
+
+  - id: kg7_2
+    stage: kvyp_finish
+    stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
+    image: "shots/g5-practice-hall.jpg"
+    text: >-
+      Как идут аттестации? Срок — до 1 апреля 2027. Если всё сдано,
+      осталось нажать «Завершить класс».
+    buttons:
+      - { label: "Все сданы", data: kg7_2.done, next: kg7_finish }
+      - { label: "Ещё в процессе", data: kg7_2.wip, next: kg7_wip }
+      - { label: "Нужна помощь", url: "https://t.me/giahssc_bot" }
+    menu: true
+
+  - id: kg7_wip
+    stage: kvyp_finish
+    stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
+    image: "shots/e2-remind-me-later.jpg"
+    text: >-
+      Хорошо, загляну ещё. Если всё сдадите раньше — нажмите кнопку ниже.
+    buttons:
+      - { label: "Все аттестации сданы", data: kg7_wip.done, next: kg7_finish }
+    menu: true
+
+  - id: kg7_finish
+    stage: kvyp_finish
+    stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
+    image: "shots/e1-4-find-tile.jpg"
+    text: >-
+      Проверьте, что зачисление завершено (шаг 2), и нажмите «<b>Завершить
+      класс</b>» в здании «Школа», над учебными предметами. Получилось?
+    buttons:
+      - { label: "Класс завершён", data: kg7_finish.yes, next: kg8_1 }
+      - { label: "Кнопка не нажимается", data: kg7_finish.no, next: kg7_stuck }
+    menu: true
+
+  - id: kg7_stuck
+    stage: kvyp_finish
+    stepLabel: "<b>Шаг 7 из {{#if grade11}}10{{else}}11{{/if}} · Завершение класса</b>"
+    image: "shots/e1-4-diagnostics-panel.jpg"
+    text: >-
+      Чаще всего дело в незакрытом предмете или в справке о зачислении.
+      Не гадайте — напишите куратору выпускников, он подскажет.
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Получилось", data: kg7_stuck.ok, next: kg8_1 }
+    menu: true
+
+  # ─────────── Шаг 8. Справка с оценками ───────────
+
+  - id: kg8_1
+    stage: kvyp_cert
+    stepLabel: "<b>Шаг 8 из {{#if grade11}}10{{else}}11{{/if}} · Справка с оценками</b>"
+    image: "shots/e2-5-archive-tower.jpg"
+    text: >-
+      ✦ <b>Класс завершён!</b> Скачайте справку с оценками: «Секретариат» →
+      «<b>Мои справки</b>».
+    buttons:
+      - { label: "Справка скачана", data: kg8_1.yes, next: kg9_1 }
+      - { label: "Справки пока нет", data: kg8_1.no, next: kg8_wait }
+    menu: true
+
+  - id: kg8_wait
+    stage: kvyp_cert
+    stepLabel: "<b>Шаг 8 из {{#if grade11}}10{{else}}11{{/if}} · Справка с оценками</b>"
+    image: "shots/e2-wait-countdown.jpg"
+    text: >-
+      Хорошо, загляну через пару дней. Если справка появится раньше —
+      нажмите кнопку ниже.
+    reminders:
+      waitingScreens: [kg8_wait]
+      schedule:
+        - { afterHours: 72, screen: kg8_1, rearm: true }
+    buttons:
+      - { label: "Справка скачана", data: kg8_wait.yes, next: kg9_1 }
+    menu: true
+
+  # ─────────── Шаг 9. ОГЭ / ЕГЭ ───────────
+
+  - id: kg9_1
+    stage: kvyp_exams
+    stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g7-exam-building.jpg"
+    text: >-
+      Дальше — {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} по графику Рособрнадзора. Направление с датой
+      и адресом придёт не позже чем за 14 дней до первого экзамена: пункт
+      назначает экзаменационная комиссия, не школа.
+    buttons:
+      - { label: "Понятно", data: kg9_1.ok, next: wait }
+    menu: true
+
+  # ✎ Напоминание ≈ 12.05 — за две недели до первых экзаменов.
+  - id: kg9_notice
+    stage: kvyp_exams
+    stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/e2-3-school-envelope.jpg"
+    text: "Направление на экзамен с датой и адресом пункта уже пришло?"
+    buttons:
+      - { label: "Да", data: kg9_notice.yes, next: kg9_day }
+      - { label: "Ещё нет", data: kg9_notice.no, next: kg9_ask }
+    menu: true
+
+  - id: kg9_ask
+    stage: kvyp_exams
+    stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g7-ask-school-window.jpg"
+    text: >-
+      Направление приходит от школы на e-mail или в mos.ru. Если его нет —
+      напишите куратору. Спрошу ещё раз через неделю.
+    reminders:
+      waitingScreens: [kg9_ask]
+      schedule:
+        - { afterHours: 168, screen: kg9_notice, rearm: true }
+    buttons:
+      - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
+      - { label: "Понятно", data: kg9_ask.ok, next: wait }
+    menu: true
+
+  - id: kg9_day
+    stage: kvyp_exams
+    stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g7-exam-morning.jpg"
+    text: >-
+      Главное в день экзамена — документ, удостоверяющий личность: без него
+      не допустят. Удачи вашему герою!
+    buttons:
+      - { label: "Спасибо", data: kg9_day.ok, next: wait }
+    menu: true
+
+  # ✎ ≈ 01.07. «Пока нет» — спросим снова через неделю.
+  - id: kg9_results
+    stage: kvyp_exams
+    stepLabel: "<b>Шаг 9 из {{#if grade11}}10{{else}}11{{/if}} · {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b>"
+    image: "shots/g7-results-scroll.jpg"
+    text: >-
+      Результаты {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} приходят от школы на e-mail или в mos.ru.
+      Уже пришли?
+    reminders:
+      waitingScreens: [kg9_results]
+      schedule:
+        - { afterHours: 168, screen: kg9_results, rearm: true }
+    buttons:
+      - { label: "Да", data: kg9_results.yes, next: kg10_1 }
+      - { label: "Пока нет", data: kg9_results.no, next: wait }
+    menu: true
+
+  # ─────────── Шаг 10. Аттестат ───────────
+
+  - id: kg10_1
+    stage: kvyp_diploma
+    stepLabel: "<b>Шаг 10 из {{#if grade11}}10{{else}}11{{/if}} · Аттестат</b>"
+    image: "shots/g8-certificate-door.jpg"
+    text: |-
+      Аттестат вручают на выпускном: мы пришлём приглашение, нужно будет записаться. Не получится прийти — сообщите куратору, он расскажет, как получить иначе.
+
+      Оценка в аттестат — {{#if grade11}}среднее всех годовых и полугодовых оценок за 10 и 11 класс{{else}}среднее оценки за промежуточную аттестацию и за ОГЭ{{/if}}.
+    buttons:
+      - { label: "Аттестат получен", data: kg10_1.done, next: kg10_done }
+      - { label: "Не сможем прийти", url: "https://t.me/giahssc_bot" }
+    menu: true
+
+  - id: kg10_done
+    stage: kvyp_diploma
+    stepLabel: "<b>Шаг 10 из {{#if grade11}}10{{else}}11{{/if}} · Аттестат</b>"
+    terminal: true
+    image: "shots/g8-summit.jpg"
+    text: >-
+      ✦ <b>Путь выпускника пройден.</b> Аттестат в руках — поздравляем вашего героя!
+    menu: true
+
+  # ─────────── Шаг 11 (только 9 класс). Продление в 10 класс (до 31 мая 2027) ───────────
+  # Срок продления наступает раньше экзаменов, поэтому шаг не в цепочке:
+  # его показывают напоминания с kg_map поверх текущего шага, обе кнопки
+  # возвращают туда, где родитель был.
+
+  - id: kg11_1
+    stage: kvyp_renewal
+    stepLabel: "<b>Шаг 11 из 11 · Продление в 10 класс</b>"
+    image: "shots/g5-mcko-signup.jpg"
+    text: >-
+      Пора подумать о 10 классе: пакет со скидкой можно купить <b>до 31 мая
+      2027</b> — льготная цена сохранится, учёба продолжится без перерыва.
+    buttons:
+      - { label: "Уже продлили", data: kg11_1.done, next: previous }
+      - { label: "Напомнить позже", data: kg11_1.later, next: previous }
+    menu: true

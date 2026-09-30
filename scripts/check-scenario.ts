@@ -4,15 +4,14 @@
 // обработчика. Этот скрипт — та же проверка, что должна идти при старте
 // приложения (см. src/bot/main.ts).
 
-import { existsSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
 import { resolve } from 'path';
-import { load } from 'js-yaml';
 import { ScenarioSchema } from '../scenario/schema';
+import { loadRawScenario, scenarioDir } from '../scenario/load';
 
 function main(): void {
-  const path = resolve(__dirname, '..', 'scenario', 'scenario.yaml');
-  const raw = readFileSync(path, 'utf8');
-  const parsed = load(raw);
+  const path = scenarioDir();
+  const parsed = loadRawScenario(path);
 
   const result = ScenarioSchema.safeParse(parsed);
 
