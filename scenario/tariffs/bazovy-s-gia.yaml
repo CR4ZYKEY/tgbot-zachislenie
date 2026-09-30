@@ -187,7 +187,10 @@ screens:
     stage: bgia_access
     stepLabel: "<b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>"
     image: "shots/e1-5b-thought-bubble.jpg"
-    text: "Что смущает? Опишите в двух словах — учтём."
+    text: |-
+      <b>Что смущает?</b>
+
+      Опишите в двух словах в ответ на это сообщение — учтём.
     input:
       field: city_feedback
       next: bg1_5c

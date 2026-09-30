@@ -114,7 +114,8 @@ export class ScreenRendererService {
       },
     });
 
-    const prefix = screen.stepLabel ? `${screen.stepLabel}\n` : '';
+    // Заголовок шага — отдельной строкой, после него пустая строка.
+    const prefix = screen.stepLabel ? `${screen.stepLabel}\n\n` : '';
     // Заголовок шага — тоже шаблон: «Итоговое собеседование / сочинение» по классу.
     const text = renderTemplate(prefix + screen.text, this.buildVars(updated));
 

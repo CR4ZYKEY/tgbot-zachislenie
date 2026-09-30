@@ -220,7 +220,10 @@ screens:
     stage: graduate_access
     stepLabel: "<b>Шаг 1 из 8 · Доступ к платформе</b>"
     image: "shots/e1-5b-thought-bubble.jpg"
-    text: "Что смущает? Опишите в двух словах — учтём."
+    text: |-
+      <b>Что смущает?</b>
+
+      Опишите в двух словах в ответ на это сообщение — учтём.
     input:
       field: city_feedback
       next: g1_5c
