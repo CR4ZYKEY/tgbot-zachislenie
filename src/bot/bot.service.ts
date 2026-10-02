@@ -40,7 +40,10 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
     });
 
     this.bot.on('callback_query:data', async (ctx) => {
-      await ctx.answerCallbackQuery();
+      // Нажатие, сделанное пока бот был выключен, Telegram отдаёт после
+      // запуска, но подтвердить его уже нельзя («query is too old»). Это не
+      // повод терять само действие родителя.
+      await ctx.answerCallbackQuery().catch(() => {});
       await this.engine.handleCallback(ctx, BigInt(ctx.from.id), ctx.callbackQuery.data);
     });
 
