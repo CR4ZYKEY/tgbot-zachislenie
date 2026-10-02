@@ -92,7 +92,14 @@ export class RemindersService {
     // Класс проверяется и при постановке, и здесь: родитель мог вернуться
     // и выбрать другой класс — даты старого класса ему уже не нужны.
     const wrongClass = reminder.forClass != null && !reminder.forClass.includes(user.class ?? '');
-    if (!waitingScreens.includes(user.stage) || wrongClass) {
+    // Экран «поверх шага» (продление: кнопки ведут на previous) — родитель
+    // на нём не ушёл со своего шага, а просто ещё не закрыл его. Тогда
+    // сверяемся с шагом под ним, иначе напоминание о шаге снялось бы навсегда.
+    const current = this.scenario.hasScreen(user.stage) ? this.scenario.getScreen(user.stage) : undefined;
+    const onTop = current?.buttons?.some((b) => b.next === 'previous') ?? false;
+    const underlying = onTop ? user.historyStack[user.historyStack.length - 1] : undefined;
+    const inZone = waitingScreens.includes(user.stage) || (underlying != null && waitingScreens.includes(underlying));
+    if (!inZone || wrongClass) {
       await this.finish(job, 'cancelled');
       return;
     }
