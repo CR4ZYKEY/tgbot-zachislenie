@@ -45,6 +45,10 @@ export class ScenarioService implements OnModuleInit {
     return this.scenario.packageFlags ?? {};
   }
 
+  get packageVars(): Record<string, Record<string, string>> {
+    return this.scenario.packageVars ?? {};
+  }
+
   get version(): string {
     return this.scenario.version;
   }

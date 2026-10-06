@@ -9,6 +9,7 @@
 #   bazovy-bez-gia.yaml     — «Базовый», 9 и 11 класс без ГИА (g*)
 #   bazovy-s-gia.yaml       — «Базовый с ГИА», 9 и 11 класс (bg*)
 #   klassny-vypusknik.yaml  — «Классный Выпускник», 9 и 11 класс (kg*)
+#   klassny-1-8-10.yaml     — «Классный», 1–8 и 10 класс (kb*)
 #
 # Спецпереходы (next), не являющиеся screen_id: menu, stop, kc, defer_to_stage2.
 # Текст поддерживает {{#if field}}..{{else}}..{{/if}} — рендерит движок.
@@ -38,7 +39,18 @@ version: "0.2.0"
 packageFlags:
   isGraduate: ["Базовый без ГИА", "Базовый с ГИА", "Классный Выпускник"]
   # С ГИА на всех шагах помогает куратор выпускников, а не клиентский сервис.
-  hasCurator: ["Базовый с ГИА", "Классный Выпускник"]
+  hasCurator: ["Базовый с ГИА", "Классный Выпускник", "Классный"]
+
+# Значения для шаблонов по тарифу ({{curatorUrl}}, {{curatorLabel}}).
+packageVars:
+  curatorUrl:
+    "Базовый с ГИА": "https://t.me/giahssc_bot"
+    "Классный Выпускник": "https://t.me/giahssc_bot"
+    "Классный": "https://t.me/CPSOCLASS_bot"
+  curatorLabel:
+    "Базовый с ГИА": "Написать куратору выпускников"
+    "Классный Выпускник": "Написать куратору выпускников"
+    "Классный": "Написать куратору"
 
 # Системные экраны-оверлеи (раздел 5 спеки + «Старые кнопки» из раздела 1).
 # Не входят в карту пути: переход на них не меняет stage пользователя,
@@ -63,7 +75,7 @@ system:
       - { label: "Статус зачисления", data: menu.status, next: status }
       - { label: "Мои аттестации", data: menu.subjects, next: in_progress }
       - { label: "Важные сроки", data: menu.dates, next: in_progress }
-      - { label: "{{#if hasCurator}}Написать куратору выпускников{{else}}Написать в клиентский сервис{{/if}}", url: "{{#if hasCurator}}https://t.me/giahssc_bot{{else}}https://t.me/{{kc_username}}?start={{kc_context}}{{/if}}" }
+      - { label: "{{#if hasCurator}}{{curatorLabel}}{{else}}Написать в клиентский сервис{{/if}}", url: "{{#if hasCurator}}{{curatorUrl}}{{else}}https://t.me/{{kc_username}}?start={{kc_context}}{{/if}}" }
 
   stop:
     text: |-
@@ -221,8 +233,7 @@ screens:
       - { label: "Не знаю — спросить", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
     back: s4b
 
-  # «Классный»: сейчас есть ветка для 9 и 11 класса (tariffs/klassny-vypusknik.yaml).
-  # Для 1–8 и 10 сценарий готовится — пока заглушка s3a.
+  # «Классный»: 9 и 11 — tariffs/klassny-vypusknik.yaml, 1–8 и 10 — tariffs/klassny-1-8-10.yaml.
   - id: k_class
     stage: start
     image: "shots/s4-nine-class-doors.jpg"
@@ -231,7 +242,7 @@ screens:
     buttons:
       - { label: "9 класс", data: k_class.k9, next: kg_s5, setField: [{ field: class, value: "9" }, { field: package, value: "Классный Выпускник" }] }
       - { label: "11 класс", data: k_class.k11, next: kg_s5, setField: [{ field: class, value: "11" }, { field: package, value: "Классный Выпускник" }] }
-      - { label: "1–8 или 10 класс", data: k_class.base, next: s3a, setField: { field: class, value: "1–8, 10" } }
+      - { label: "1–8 или 10 класс", data: k_class.base, next: kb_s5, setField: { field: class, value: "1–8, 10" } }
     back: s3
 
   - id: s3a

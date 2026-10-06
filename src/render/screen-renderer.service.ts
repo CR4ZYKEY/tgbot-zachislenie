@@ -62,6 +62,10 @@ export class ScreenRendererService {
       ...Object.fromEntries(
         Object.entries(this.scenario.packageFlags).map(([flag, packages]) => [flag, packages.includes(user.package ?? '')]),
       ),
+      // Значения тарифа (curatorUrl, curatorLabel, …) — из packageVars сценария.
+      ...Object.fromEntries(
+        Object.entries(this.scenario.packageVars).map(([name, byPackage]) => [name, byPackage[user.package ?? ''] ?? '']),
+      ),
     };
   }
 

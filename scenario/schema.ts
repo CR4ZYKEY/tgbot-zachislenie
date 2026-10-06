@@ -218,6 +218,9 @@ export const ScenarioSchema = z
     // package родителя — один из перечисленных. Живут в сценарии, чтобы новый
     // тариф подключался без правки кода.
     packageFlags: z.record(z.string().regex(/^\w+$/), z.array(z.string().min(1)).min(1)).optional(),
+    // Значения для шаблонов по тарифу: {{curatorUrl}} — ссылка на куратора
+    // того тарифа, который выбрал родитель (у выпускников и «Классного» разные).
+    packageVars: z.record(z.string().regex(/^\w+$/), z.record(z.string(), z.string())).optional(),
     screens: z.array(ScreenSchema).min(1),
     system: SystemScreensSchema,
   })

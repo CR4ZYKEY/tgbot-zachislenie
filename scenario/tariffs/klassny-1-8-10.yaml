@@ -1,0 +1,1022 @@
+# Тариф «Классный», 1–8 и 10 класс — «Зачисление в школу».
+# Источник: ЭдПалм_Классный_1-8-10_Пошаговая-инструкция (2026/2027).
+#
+# Вход: s3 «Классный» → k_class «1–8 или 10 класс» → kb_s5 → kb_map.
+# 7 шагов: доступ и куратор → созвон с наставником → зачисление → учёба по
+# расписанию → завершение класса → справка → продление (до 31 мая 2027).
+# Шаги 1 и 3–7 — копия «Базового» 1–8/10 (e*), правятся независимо. Помощь —
+# куратор «Классного» (t.me/CPSOCLASS_bot), учёба — к наставнику.
+# Файл сгенерирован 06.10.2026, дальше правится вручную.
+
+screens:
+  - id: kb_s5
+    stage: kcl_start
+    image: shots/s5-garden-fork.jpg
+    text: <b>Вы у нас впервые или уже учились?</b>
+    buttons:
+      - label: Впервые
+        data: kb_s5.new
+        next: kb_map
+        setField:
+          field: isReturning
+          value: 'false'
+      - label: Уже учились
+        data: kb_s5.ret
+        next: kb_map
+        setField:
+          field: isReturning
+          value: 'true'
+    back: k_class
+  - id: kb_map
+    stage: kcl_start
+    image: shots/g-map-graduate-road.jpg
+    text: |-
+      Спасибо за ответы! Вот весь путь — 7 шагов:
+
+      <b>1. Доступ и куратор</b> — в день оплаты
+      <b>2. Созвон с наставником</b> — сразу после покупки
+      <b>3. Зачисление в школу</b> — около 10 дней
+      <b>4. Учёба по расписанию</b> — до 31 мая 2027
+      <b>5. Завершение класса</b> — до 31 мая 2027
+      <b>6. Справка с оценками</b> — после завершения класса
+      <b>7. Продление со скидкой</b> — до 31 мая 2027
+
+      Вы не одни: куратор помогает с документами и организацией, наставник — с учёбой.
+    reminders:
+      waitingScreens:
+        - kb_map
+      schedule:
+        - at: '2027-03-01'
+          screen: kb5_1
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb7_1
+        - at: '2027-04-01'
+          screen: kb5_2
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb7_1
+        - at: '2027-05-01'
+          screen: kb5_3
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb7_1
+        - at: '2027-05-20'
+          screen: kb5_4
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb7_1
+        - at: '2027-03-31'
+          screen: kb7_1
+          skipIfAnswered:
+            - kb7_1.done
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb6_1
+            - kb6_wait
+            - kb7_1
+            - kb_done
+        - at: '2027-04-30'
+          screen: kb7_1
+          skipIfAnswered:
+            - kb7_1.done
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb6_1
+            - kb6_wait
+            - kb7_1
+            - kb_done
+        - at: '2027-05-20'
+          screen: kb7_1
+          skipIfAnswered:
+            - kb7_1.done
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb6_1
+            - kb6_wait
+            - kb7_1
+            - kb_done
+        - at: '2027-05-29'
+          screen: kb7_1
+          skipIfAnswered:
+            - kb7_1.done
+          waitingScreens:
+            - kb3_6
+            - kb4_1
+            - kb4_wait
+            - kb5_1
+            - kb5_2
+            - kb5_3
+            - kb5_4
+            - kb5_wip
+            - kb5_finish
+            - kb5_stuck
+            - kb6_1
+            - kb6_wait
+            - kb7_1
+            - kb_done
+    buttons:
+      - label: Начинаем
+        data: kb_map.go
+        next: kb1_1
+    back: kb_s5
+  - id: kb1_1
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-1-key-at-gate.jpg
+    text: |-
+      {{#if isReturning}}Вы уже учились у нас — войти можно по прежним логину и паролю.
+
+      <b>Получилось войти?</b>{{else}}✉️ В день оплаты на почту плательщика приходит письмо: в нём логин и пароль от платформы и контакт вашего куратора.
+
+      <b>Письмо пришло?</b>{{/if}}
+    buttons:
+      - label: Да
+        data: kb1_1.yes
+        next: kb1_3
+      - label: Нет
+        data: kb1_1.no
+        next: kb1_2
+    back: kb_map
+    menu: true
+    deferButton:
+      label: Зайду на платформу позже — к зачислению
+      data: kb1.defer
+      next: kb3_0
+  - id: kb1_2
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-2-lost-mail-search.jpg
+    text: |-
+      ✉️ Такие письма иногда попадают в спам.
+
+      <b>Загляните в папку «Спам» — письмо там?</b>
+    buttons:
+      - label: Нашёл
+        data: kb1_2.found
+        next: kb1_3
+      - label: Там пусто
+        data: kb1_2.empty
+        next: kb1_2a
+    menu: true
+    deferButton:
+      label: Зайду на платформу позже — к зачислению
+      data: kb1.defer
+      next: kb3_0
+  - id: kb1_2a
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-2a-support-help.jpg
+    text: |-
+      Похоже, письмо не пришло. Не переживайте!
+
+      Напишите куратору — он поможет разобраться.
+    buttons:
+      - label: Написать куратору
+        url: https://t.me/CPSOCLASS_bot
+      - label: Я разберусь позже
+        data: kb1_2a.later
+        next: kb3_0
+    menu: true
+  - id: kb1_3
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-3-gate-opens.jpg
+    text: |-
+      Теперь войдите на платформу по этим данным.
+
+      <b>Получилось?</b>
+    buttons:
+      - label: Да, я внутри
+        data: kb1_3.yes
+        next: kb1_5
+      - label: Не получается
+        data: kb1_3.no
+        next: kb1_4
+    menu: true
+    deferButton:
+      label: Зайду на платформу позже — к зачислению
+      data: kb1.defer
+      next: kb3_0
+  - id: kb1_4
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-4-diagnostics-panel.jpg
+    text: |-
+      Выберите, что ближе к вашей ситуации, — так будет проще помочь.
+
+      <b>Что пошло не так?</b>
+    buttons:
+      - label: Не подходит пароль
+        data: kb1_4.password
+        next: kb1_4_password
+      - label: Страница не открывается
+        data: kb1_4.page
+        next: kb1_4_page
+      - label: Не понимаю, куда нажимать
+        data: kb1_4.confused
+        next: kb1_4_confused
+    menu: true
+    deferButton:
+      label: Зайду на платформу позже — к зачислению
+      data: kb1.defer
+      next: kb3_0
+  - id: kb1_4_password
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-4-fix-on-site.jpg
+    text: |-
+      {{#if isReturning}}Пароль можно восстановить двумя способами:
+      • в личном кабинете;
+      • кнопкой «Забыли пароль» на странице входа.
+
+      Новый пароль придёт на ту же почту.{{else}}💡 Нажмите «Забыли пароль» на странице входа — новый пароль придёт на ту же почту.{{/if}}
+
+      <b>Получилось?</b>
+    buttons:
+      - label: Да
+        data: kb1_4_password.yes
+        next: kb1_5
+      - label: Нет, напишу куратору
+        url: https://t.me/CPSOCLASS_bot
+  - id: kb1_4_page
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-4-page-refresh.jpg
+    text: |-
+      💡 Обычно помогает одно из двух:
+      • обновить страницу;
+      • открыть её в другом браузере.
+
+      <b>Получилось?</b>
+    buttons:
+      - label: Да
+        data: kb1_4_page.yes
+        next: kb1_5
+      - label: Нет, напишу куратору
+        url: https://t.me/CPSOCLASS_bot
+  - id: kb1_4_confused
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-4-find-tile.jpg
+    text: |-
+      💡 После входа нажмите на плитку в центре экрана — это и есть вход в Город.
+
+      <b>Получилось?</b>
+    buttons:
+      - label: Да
+        data: kb1_4_confused.yes
+        next: kb1_5
+      - label: Нет, напишу куратору
+        url: https://t.me/CPSOCLASS_bot
+  - id: kb1_5
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-5-first-city-reveal.jpg
+    text: |-
+      Вот вы и в Городе — так платформа выглядит изнутри.
+
+      <b>Как вам первое впечатление?</b>
+    buttons:
+      - label: Нравится
+        data: kb1_5.like
+        next: kb1_6
+      - label: Пока непонятно
+        data: kb1_5.unclear
+        next: kb1_5b
+    menu: true
+  - id: kb1_5b
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-5b-thought-bubble.jpg
+    text: |-
+      <b>Что смущает?</b>
+
+      Опишите в двух словах в ответ на это сообщение — учтём.
+    input:
+      field: city_feedback
+      next: kb1_5c
+      validation: none
+  - id: kb1_5c
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-5c-lighthouse-guide.jpg
+    text: |-
+      Спасибо за отзыв!
+
+      💡 Освоиться помогает экскурсия по Городу — пройдите её вместе с героем.
+    buttons:
+      - label: Спасибо, посмотрю
+        data: kb1_5c.ok
+        next: kb1_6
+  - id: kb1_6
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-6-school-building.jpg
+    text: |-
+      Теперь найдите гайд по обучению:
+      📍 здание «<b>Школа</b>» → кабинет «<b>Информация для старта</b>»
+
+      Там всё главное: как устроена платформа, сроки аттестаций, правила оценок.
+
+      <b>Нашли?</b>
+    buttons:
+      - label: Нашёл
+        data: kb1_6.found
+        next: kb1_7
+      - label: Не нашёл
+        data: kb1_6.notfound
+        next: kb1_6b
+    menu: true
+    deferButton:
+      label: Зайду на платформу позже — к зачислению
+      data: kb1.defer
+      next: kb3_0
+  - id: kb1_6b
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    text: |-
+      Путь такой:
+      📍 здание «<b>Школа</b>» → кабинет «<b>Информация для старта</b>»
+
+      Вот как это выглядит.
+    image: ✎ shots/e1_6b_school_info.png
+    buttons:
+      - label: Дальше
+        data: kb1_6b.ok
+        next: kb1_7
+  - id: kb1_7
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-7-access-open.jpg
+    text: |-
+      ✦ <b>Доступ открыт!</b>
+
+      Вы разобрались, как всё устроено, — ваш герой готов к занятиям.
+    buttons:
+      - label: Дальше — созвон с наставником
+        data: kb1_7.next
+        next: kb2_1
+  - id: kb2_1
+    stage: kcl_mentor
+    stepLabel: <b>Шаг 2 из 7 · Созвон с наставником</b>
+    image: shots/gia-curator-instruction.jpg
+    text: |-
+      Наставник ведёт класс весь год: видит результаты вашего героя и даёт обратную связь.
+
+      Куратор сам свяжется с вами и предложит время для созвона — просить не нужно, ждать зачисления тоже.
+
+      <b>Созвон с наставником уже был?</b>
+    buttons:
+      - label: Да, созвонились
+        data: kb2_1.yes
+        next: kb3_0
+      - label: Ещё нет
+        data: kb2_1.no
+        next: kb2_wait
+    menu: true
+  - id: kb2_wait
+    stage: kcl_mentor
+    stepLabel: <b>Шаг 2 из 7 · Созвон с наставником</b>
+    image: shots/g3-later-bench.jpg
+    text: |-
+      Хорошо! Куратор предложит время — созвонитесь всей семьёй: наставник расскажет, как пройдёт год.
+
+      А пока займёмся зачислением.
+    buttons:
+      - label: К зачислению
+        data: kb2_wait.ok
+        next: kb3_0
+    menu: true
+  - id: kb3_0
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-0-two-archways.jpg
+    text: |-
+      Переходим к официальному зачислению — его проходят сразу после оплаты.
+
+      📅 Рекомендуем уложиться в <b>10 дней</b>: пока подписанные документы не загружены, класс не завершить.
+
+      Впереди два этапа:
+      <b>1. Личные документы</b> — вы отправляете их нам.
+      <b>2. Документы от школы</b> — школа пришлёт, вам останется подписать.
+
+      Запутаетесь — куратор поможет, он для этого и нужен.
+    buttons:
+      - label: Понятно, начинаем
+        data: kb3_0.ok
+        next: kb3_1
+    back: kb_map
+    menu: true
+  - id: kb3_1
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-1-document-scroll.jpg
+    text: |-
+      ✉️ В день оплаты приходит письмо со списком документов для зачисления.
+
+      <b>Письмо пришло?</b>
+    buttons:
+      - label: Да
+        data: kb3_1.yes
+        next: kb3_2
+      - label: Нет
+        data: kb3_1.no
+        next: kb3_1_spam
+      - label: Пока пройду шаг с платформой
+        data: kb3_1.to_stage1
+        next: kb1_1
+    menu: true
+  - id: kb3_1_spam
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e1-2-lost-mail-search.jpg
+    text: |-
+      ✉️ Такие письма иногда попадают в спам.
+
+      <b>Загляните в папку «Спам» — письмо там?</b>
+    buttons:
+      - label: Нашёл
+        data: kb3_1_spam.found
+        next: kb3_2
+      - label: Там пусто
+        data: kb3_1_spam.empty
+        next: kb3_1_kc
+    menu: true
+  - id: kb3_1_kc
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e1-2a-support-help.jpg
+    text: |-
+      Похоже, письмо не пришло. Не переживайте!
+
+      Напишите куратору — он поможет разобраться.
+    buttons:
+      - label: Написать куратору
+        url: https://t.me/CPSOCLASS_bot
+      - label: Я разберусь позже
+        data: kb3_1_kc.later
+        next: kb3_2
+    menu: true
+  - id: kb3_2
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      {{#if isReturning}}Раз вы уже учились у нас, нужны только недостающие документы — то, чего не хватало в прошлый раз.
+
+      <b>Вы их отправили?</b>{{else}}Соберите документы по списку из письма и отправьте их по инструкции.
+
+      <b>Уже отправили?</b>{{/if}}
+    buttons:
+      - label: Да, отправил
+        data: kb3_2.yes
+        next: kb3_2_sent
+      - label: Ещё нет
+        data: kb3_2.no
+        next: kb3_2a
+    menu: true
+  - id: kb3_2_sent
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2-sent-docs-check.jpg
+    text: |-
+      Документы получены — проверяем, всё ли на месте.
+
+      ✉️ Ответ придёт <b>на почту</b>. Если всё в порядке, следующим письмом будут документы на подпись.
+
+      Я загляну напомнить, чтобы письмо не потерялось.
+    reminders:
+      waitingScreens:
+        - kb3_2_sent
+        - kb3_3
+        - kb3_3_spam
+        - kb3_3_wait
+        - kb3_3_ping2
+        - kb3_3_kc
+      schedule:
+        - afterHours: 24
+          screen: kb3_3
+        - afterHours: 48
+          screen: kb3_3_ping2
+    buttons:
+      - label: Проверить почту сейчас
+        data: kb3_2_sent.check
+        next: kb3_3
+    menu: true
+  - id: kb3_2a
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2a-checklist-question.jpg
+    text: |-
+      Разберёмся вместе.
+
+      <b>Что мешает отправить документы?</b>
+    buttons:
+      - label: Не хватает документа
+        data: kb3_2a.missing_doc
+        next: kb3_2a_missing
+      - label: Не понял, что нужно
+        data: kb3_2a.unclear_list
+        next: kb3_2a_list
+      - label: Не понял, куда слать
+        data: kb3_2a.unclear_where
+        next: kb3_2a_where
+      - label: Нужно время
+        data: kb3_2a.need_time
+        next: kb3_2a_time
+  - id: kb3_2a_missing
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2a-missing-detail.jpg
+    text: |-
+      💡 Часто дело в мелочах:
+      • документ оформлен не на того родителя;
+      • нет прописки;
+      • фото устарело.
+
+      Если не ваш случай — напишите куратору, он поможет.
+    buttons:
+      - label: Разобрался
+        data: kb3_2a_missing.ok
+        next: kb3_2
+      - label: Нужна помощь куратора
+        url: https://t.me/CPSOCLASS_bot
+  - id: kb3_2a_list
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2a-document-sorting.jpg
+    text: |-
+      Вот что нужно сделать:
+      1. Откройте письмо со списком документов.
+      2. Сверьте его с чек-листом на платформе.
+      3. Соберите всё одним архивом.
+    buttons:
+      - label: Понятно
+        data: kb3_2a_list.ok
+        next: kb3_2
+  - id: kb3_2a_where
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2a-where-to-send.jpg
+    text: |-
+      Отправить документы можно так:
+      📍 <b>Секретариат</b> → «<b>Загрузка документов</b>»
+
+      Прикрепите файлы и нажмите «Отправить».
+    buttons:
+      - label: Понятно
+        data: kb3_2a_where.ok
+        next: kb3_2
+  - id: kb3_2a_time
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-remind-me-later.jpg
+    text: |-
+      Хорошо, не буду торопить.
+
+      <b>Когда вам напомнить?</b>
+    buttons:
+      - label: Напомнить завтра
+        data: kb3_2a_time.tomorrow
+        next: kb3_2
+      - label: Через 3 дня
+        data: kb3_2a_time.in3days
+        next: kb3_2
+  - id: kb3_3
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-3-school-envelope.jpg
+    text: |-
+      ✉️ Загляните в почту.
+
+      <b>Пришло письмо от нас с документами на подпись?</b>
+    buttons:
+      - label: Да, пришло
+        data: kb3_3.yes
+        next: kb3_4
+      - label: Письма нет
+        data: kb3_3.no
+        next: kb3_3_spam
+    menu: true
+  - id: kb3_3_spam
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-3-spam-folders.jpg
+    text: |-
+      💡 Письма с вложениями часто уезжают в папки «<b>Спам</b>» и «<b>Промоакции</b>».
+
+      И проверьте, что смотрите тот же ящик, на который оформляли оплату.
+
+      <b>Нашли письмо?</b>
+    buttons:
+      - label: Нашёл письмо
+        data: kb3_3_spam.found
+        next: kb3_4
+      - label: Там тоже пусто
+        data: kb3_3_spam.empty
+        next: kb3_3_wait
+  - id: kb3_3_wait
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-wait-countdown.jpg
+    text: |-
+      Хорошо, подожду вместе с вами — загляну ещё раз позже.
+
+      Если письмо появится раньше — нажмите кнопку ниже.
+    buttons:
+      - label: Письмо пришло
+        data: kb3_3_wait.found
+        next: kb3_4
+    menu: true
+  - id: kb3_3_ping2
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-3-ping2-second-look.jpg
+    text: |-
+      Ещё раз про письмо со школьными документами.
+
+      ✉️ Проверьте входящие и папку «Спам».
+
+      <b>Письмо пришло?</b>
+    buttons:
+      - label: Да, пришло
+        data: kb3_3_ping2.yes
+        next: kb3_4
+      - label: Так и не пришло
+        data: kb3_3_ping2.no
+        next: kb3_3_kc
+    menu: true
+  - id: kb3_3_kc
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-3-kc-mail-rescue.jpg
+    text: |-
+      Похоже, письмо действительно не дошло.
+
+      Напишите куратору — он разберётся с почтой.
+    buttons:
+      - label: Написать куратору
+        url: https://t.me/CPSOCLASS_bot
+      - label: Письмо всё-таки нашлось
+        data: kb3_3_kc.found
+        next: kb3_4
+    menu: true
+  - id: kb3_4
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-4-glowing-quill.jpg
+    text: |-
+      Осталось подписать документы от школы.
+
+      Отправьте сканы или чёткие фото через кнопку из письма.
+      <i>Ответным письмом не отправляйте — мы не сможем их получить.</i>
+
+      <b>Отправили?</b>
+    buttons:
+      - label: Направил
+        data: kb3_4.yes
+        next: kb3_5
+      - label: Ещё нет
+        data: kb3_4.no
+        next: kb3_4_wait
+    menu: true
+  - id: kb3_4_wait
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-remind-me-later.jpg
+    text: |-
+      Хорошо, не буду торопить.
+
+      <b>Когда вам напомнить?</b>
+    buttons:
+      - label: Напомнить завтра
+        data: kb3_4_wait.tomorrow
+        next: kb3_4
+      - label: Через 3 дня
+        data: kb3_4_wait.in3days
+        next: kb3_4
+  - id: kb3_5
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-5-archive-tower.jpg
+    text: |-
+      Готово! Дальше всё делаем мы.
+
+      📍 Справка о зачислении появится в <b>Секретариате</b> → «<b>Справки</b>» после подписания всех документов.
+
+      Скачивать ничего не нужно — просто держите в уме.
+    buttons:
+      - label: Что дальше?
+        data: kb3_5.next
+        next: kb3_6
+  - id: kb3_6
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-6-path-open.jpg
+    text: |-
+      ✦ <b>Путь открыт!</b>
+
+      Три шага из семи позади — и это были самые срочные.
+
+      Дальше — учёба по расписанию: расскажу, как следить за прогрессом, и напомню про аттестации.
+    buttons:
+      - label: Дальше — к учёбе
+        data: kb3_6.next
+        next: kb4_1
+    menu: true
+  - id: kb4_1
+    stage: kcl_study
+    stepLabel: <b>Шаг 4 из 7 · Учёба и прогресс</b>
+    image: shots/g5-rooftop-library.jpg
+    text: |-
+      Расписание на платформе уже собрано за вас: предметы, внеклассные активности, тренажёры и сами аттестации.
+
+      Следить за учёбой помогут:
+      • <b>расписание</b> — следуйте ему, и всё успеется;
+      • <b>тренажёры аттестаций</b> — онлайн или в pdf;
+      • <b>наставник</b> — видит прогресс и подскажет, где поднажать.
+    buttons:
+      - label: Понятно
+        data: kb4_1.ok
+        next: kb4_wait
+    menu: true
+  - id: kb4_wait
+    stage: kcl_study
+    stepLabel: <b>Шаг 4 из 7 · Учёба и прогресс</b>
+    image: shots/g4-calendar-board.jpg
+    text: |-
+      Учёба — к наставнику, документы и организация — к куратору.
+
+      📅 Все аттестации — <b>до 31 мая 2027</b>. Не успеваете по графику — скажите наставнику заранее, а не в мае.
+    buttons:
+      - label: Аттестации уже сданы
+        data: kb4_wait.done
+        next: kb5_finish
+    menu: true
+  - id: kb5_1
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/g5-practice-hall.jpg
+    text: |-
+      Весна — время аттестаций.
+
+      📅 Все предметы нужно сдать на «3» и выше <b>до 31 мая 2027</b>.
+
+      <b>Как успехи?</b>
+    buttons:
+      - label: Все сданы
+        data: kb5_1.done
+        next: kb5_finish
+      - label: Ещё в процессе
+        data: kb5_1.wip
+        next: kb5_wip
+      - label: Нужна помощь
+        url: https://t.me/CPSOCLASS_bot
+    menu: true
+  - id: kb5_2
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/attest-progress-planters.jpg
+    text: |-
+      Пора проверить аттестации.
+
+      Если все предметы сданы — осталось завершить класс, это одна кнопка.
+
+      <b>Как успехи?</b>
+    buttons:
+      - label: Все сданы
+        data: kb5_2.done
+        next: kb5_finish
+      - label: Ещё в процессе
+        data: kb5_2.wip
+        next: kb5_wip
+      - label: Нужна помощь
+        url: https://t.me/CPSOCLASS_bot
+    menu: true
+  - id: kb5_3
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/attest-last-stones.jpg
+    text: |-
+      Май — время закрывать аттестации.
+
+      📅 До <b>31 мая 2027</b> нужно:
+      • сдать все предметы;
+      • нажать «Завершить класс».
+
+      <b>Как успехи?</b>
+    buttons:
+      - label: Все сданы
+        data: kb5_3.done
+        next: kb5_finish
+      - label: Ещё в процессе
+        data: kb5_3.wip
+        next: kb5_wip
+      - label: Нужна помощь
+        url: https://t.me/CPSOCLASS_bot
+    menu: true
+  - id: kb5_4
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/attest-final-stretch.jpg
+    text: |-
+      📅 Аттестации и завершение класса — до <b>31 мая 2027</b>.
+
+      Если что-то мешает успеть — скажите наставнику, он подскажет.
+
+      <b>Как успехи?</b>
+    buttons:
+      - label: Все сданы
+        data: kb5_4.done
+        next: kb5_finish
+      - label: Ещё в процессе
+        data: kb5_4.wip
+        next: kb5_wip
+      - label: Нужна помощь
+        url: https://t.me/CPSOCLASS_bot
+    menu: true
+  - id: kb5_wip
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/attest-keep-going.jpg
+    text: |-
+      Хорошо, не буду торопить — загляну ещё.
+
+      Если всё сдадите раньше — нажмите кнопку ниже.
+    buttons:
+      - label: Все аттестации сданы
+        data: kb5_wip.done
+        next: kb5_finish
+    menu: true
+  - id: kb5_finish
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/finish-class-button.jpg
+    text: |-
+      Осталось завершить класс.
+
+      📍 Здание «<b>Школа</b>» → кнопка «<b>Завершить класс</b>» над учебными предметами.
+
+      <b>Получилось?</b>
+    buttons:
+      - label: Класс завершён
+        data: kb5_finish.yes
+        next: kb6_1
+      - label: Кнопка не нажимается
+        data: kb5_finish.no
+        next: kb5_stuck
+    menu: true
+  - id: kb5_stuck
+    stage: kcl_attest
+    stepLabel: <b>Шаг 5 из 7 · Аттестации и завершение класса</b>
+    image: shots/finish-class-check.jpg
+    text: |-
+      Обычно дело в одном из двух:
+      • не закрыт какой-то предмет;
+      • не загружены подписанные документы (шаг 3).
+
+      Не гадайте — напишите куратору, если не получится.
+
+      <b>Проверьте оба пункта — получилось?</b>
+    buttons:
+      - label: Получилось
+        data: kb5_stuck.ok
+        next: kb6_1
+      - label: Написать куратору
+        url: https://t.me/CPSOCLASS_bot
+    menu: true
+  - id: kb6_1
+    stage: kcl_cert
+    stepLabel: <b>Шаг 6 из 7 · Итоговая справка</b>
+    image: shots/grades-certificate.jpg
+    text: |-
+      ✦ <b>Класс завершён!</b>
+
+      📍 Справка с оценками появится в <b>Секретариате</b> → «<b>Мои справки</b>».
+
+      <b>Справка уже есть?</b>
+    buttons:
+      - label: Справка скачана
+        data: kb6_1.yes
+        next: kb_done
+      - label: Справки пока нет
+        data: kb6_1.no
+        next: kb6_wait
+    menu: true
+  - id: kb6_wait
+    stage: kcl_cert
+    stepLabel: <b>Шаг 6 из 7 · Итоговая справка</b>
+    image: shots/grades-certificate-soon.jpg
+    text: |-
+      Хорошо, загляну через пару дней.
+
+      Если справка появится раньше — нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - kb6_wait
+      schedule:
+        - afterHours: 72
+          screen: kb6_1
+          rearm: true
+    buttons:
+      - label: Справка скачана
+        data: kb6_wait.yes
+        next: kb_done
+    menu: true
+  - id: kb7_1
+    stage: kcl_renewal
+    stepLabel: <b>Шаг 7 из 7 · Продление со скидкой</b>
+    image: shots/renewal-next-year.jpg
+    text: |-
+      Пора подумать о следующем учебном годе.
+
+      📅 Если купить пакет <b>до 31 мая 2027</b>, сохранится льготная цена, а учёба продолжится без перерыва.
+
+      <b>Уже продлили?</b>
+    buttons:
+      - label: Уже продлили
+        data: kb7_1.done
+        next: previous
+      - label: Напомнить позже
+        data: kb7_1.later
+        next: previous
+    menu: true
+  - id: kb_done
+    stage: kcl_renewal
+    terminal: true
+    image: shots/year-complete.jpg
+    text: |-
+      ✦ <b>Все шаги пройдены!</b>
+
+      Класс завершён, справка с оценками у вас.
+
+      Осталось продление со скидкой — если ещё не успели.
+    buttons:
+      - label: Продление со скидкой
+        data: kb_done.renew
+        next: kb7_1
+    menu: true
