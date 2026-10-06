@@ -29,7 +29,7 @@ screens:
     back: k_class
   - id: kb_map
     stage: kcl_start
-    image: shots/g-map-graduate-road.jpg
+    image: shots/klassny-map-seven-steps.jpg
     text: |-
       Спасибо за ответы! Вот весь путь — 7 шагов:
 
@@ -423,7 +423,7 @@ screens:
   - id: kb2_1
     stage: kcl_mentor
     stepLabel: <b>Шаг 2 из 7 · Созвон с наставником</b>
-    image: shots/gia-curator-instruction.jpg
+    image: shots/klassny-mentor-call.jpg
     text: |-
       Наставник ведёт класс весь год: видит результаты вашего героя и даёт обратную связь.
 
