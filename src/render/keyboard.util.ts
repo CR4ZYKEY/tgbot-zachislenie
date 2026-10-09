@@ -7,23 +7,35 @@ import { TemplateVars, renderTemplate } from './template.util';
 // поэтому не пересекается с содержимым screen_id/data.
 const SEP = '~';
 
-export function encodeCallback(screenId: string, data: string, renderVersion: number): string {
-  return [screenId, data, renderVersion.toString(36)].join(SEP);
+// slot — номер героя (ребёнка) у родителя: кнопка работает на свой путь, даже
+// если родитель сейчас «на другом» (напоминание о втором ребёнке и т.п.).
+// Старые кнопки без slot (три части) тоже принимаются — тогда текущий путь.
+export function encodeCallback(screenId: string, data: string, renderVersion: number, slot?: number): string {
+  const parts = [screenId, data, renderVersion.toString(36)];
+  if (slot) parts.push(String(slot));
+  return parts.join(SEP);
 }
+
+// Номер героя для клавиатуры берётся из тех же переменных шаблона (urlVars).
+const slotOf = (vars: TemplateVars | undefined): number | undefined =>
+  typeof vars?.slot === 'number' ? vars.slot : undefined;
 
 export interface DecodedCallback {
   screenId: string;
   data: string;
   renderVersion: number;
+  slot?: number;
 }
 
 export function decodeCallback(raw: string): DecodedCallback | null {
   const parts = raw.split(SEP);
-  if (parts.length !== 3) return null;
-  const [screenId, data, versionRaw] = parts;
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const [screenId, data, versionRaw, slotRaw] = parts;
   const renderVersion = parseInt(versionRaw, 36);
   if (!screenId || !data || Number.isNaN(renderVersion)) return null;
-  return { screenId, data, renderVersion };
+  const slot = slotRaw ? parseInt(slotRaw, 10) : undefined;
+  if (slot !== undefined && (Number.isNaN(slot) || slot < 1)) return null;
+  return { screenId, data, renderVersion, slot };
 }
 
 function addButtonRows(
@@ -43,7 +55,7 @@ function addButtonRows(
       if (b.url) {
         kb.url(label, renderTemplate(b.url, urlVars));
       } else if (b.data) {
-        kb.text(label, encodeCallback(screenId, b.data, renderVersion));
+        kb.text(label, encodeCallback(screenId, b.data, renderVersion, slotOf(urlVars)));
       }
     }
     kb.row();
@@ -66,12 +78,12 @@ export function buildScreenKeyboard(
   addButtonRows(kb, screen.buttons, screen.id, renderVersion, screen.grid ? 4 : 2, urlVars);
 
   for (const b of opts.extraButtons ?? []) {
-    if (b.data) kb.text(b.label, encodeCallback(screen.id, b.data, renderVersion)).row();
+    if (b.data) kb.text(renderTemplate(b.label, urlVars), encodeCallback(screen.id, b.data, renderVersion, slotOf(urlVars))).row();
   }
 
   const serviceRow: Array<[string, string]> = [];
-  if (opts.backTarget) serviceRow.push(['← Назад', encodeCallback(screen.id, '__back', renderVersion)]);
-  if (screen.menu) serviceRow.push(['☰ Меню', encodeCallback(screen.id, '__menu', renderVersion)]);
+  if (opts.backTarget) serviceRow.push(['← Назад', encodeCallback(screen.id, '__back', renderVersion, slotOf(urlVars))]);
+  if (screen.menu) serviceRow.push(['☰ Меню', encodeCallback(screen.id, '__menu', renderVersion, slotOf(urlVars))]);
   for (const [label, data] of serviceRow) kb.text(label, data);
   if (serviceRow.length) kb.row();
 
@@ -95,7 +107,7 @@ export function buildSystemKeyboard(
   const kb = new InlineKeyboard();
   addButtonRows(kb, screen.buttons, overlayId, renderVersion, 2, urlVars);
   if (opts.includeBack) {
-    kb.text('← Назад', encodeCallback(overlayId, '__overlay_back', renderVersion)).row();
+    kb.text('← Назад', encodeCallback(overlayId, '__overlay_back', renderVersion, slotOf(urlVars))).row();
   }
   return kb;
 }

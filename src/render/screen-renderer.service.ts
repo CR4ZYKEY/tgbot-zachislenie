@@ -56,6 +56,8 @@ export class ScreenRendererService {
 
   buildVars(user: User): TemplateVars {
     const vars: TemplateVars = {
+      // Номер героя (ребёнка) у родителя — по нему кнопки знают, чей это путь.
+      slot: user.slot,
       package: user.package,
       isReturning: user.isReturning ?? false,
       class: user.class,
@@ -128,8 +130,13 @@ export class ScreenRendererService {
       },
     });
 
+    // Несколько детей у родителя — над каждым шагом «Герой N · пакет, класс»,
+    // иначе непонятно, о ком сообщение (особенно в напоминаниях).
+    const heroes = await this.prisma.user.count({ where: { tgId: updated.tgId } });
+    const heroLine = heroes > 1 && this.scenario.ui.heroPrefix ? `${this.scenario.ui.heroPrefix}\n` : '';
     // Заголовок шага — отдельной строкой, после него пустая строка.
-    const prefix = screen.stepLabel ? `${screen.stepLabel}\n\n` : '';
+    const head = heroLine + (screen.stepLabel ? `${screen.stepLabel}\n` : '');
+    const prefix = head ? `${head}\n` : '';
     // Заголовок шага — тоже шаблон: «Итоговое собеседование / сочинение» по классу.
     const text = renderTemplate(prefix + screen.text, this.buildVars(updated));
 

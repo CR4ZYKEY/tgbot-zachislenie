@@ -49,8 +49,14 @@ export class ScenarioService implements OnModuleInit {
     return this.scenario.packageVars ?? {};
   }
 
-  get ui(): { answeredPrefix: string } {
-    return { answeredPrefix: this.scenario.ui?.answeredPrefix ?? '' };
+  get ui(): { answeredPrefix: string; heroLabel: string; heroAdd: string; heroPrefix: string } {
+    const ui = this.scenario.ui;
+    return {
+      answeredPrefix: ui?.answeredPrefix ?? '',
+      heroLabel: ui?.heroLabel ?? '',
+      heroAdd: ui?.heroAdd ?? '',
+      heroPrefix: ui?.heroPrefix ?? '',
+    };
   }
 
   get version(): string {

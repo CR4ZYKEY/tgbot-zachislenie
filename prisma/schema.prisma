@@ -15,7 +15,10 @@ datasource db {
 
 model User {
   id       String @id @default(cuid())
-  tgId     BigInt @unique
+  // Один Telegram-аккаунт родителя — несколько путей, по одному на ребёнка
+  // («Мои герои», протокол КС 07.10.2026). slot — номер героя у родителя.
+  tgId     BigInt
+  slot     Int    @default(1)
 
   // Персональные данные — см. п.5 CLAUDE.md: только это и ничего сверх.
   clientCode String? @unique
@@ -91,6 +94,8 @@ model User {
   checklist ChecklistItem[]
   jobs      Job[]
 
+  @@unique([tgId, slot])
+  @@index([tgId])
   @@map("users")
 }
 
@@ -172,4 +177,14 @@ model PhotoCache {
   updatedAt   DateTime @updatedAt
 
   @@map("photo_cache")
+}
+
+// Какой из путей родителя сейчас выбран: на него идут /start, свободный ввод
+// и кнопки старых сообщений без номера героя.
+model ParentState {
+  tgId       BigInt   @id
+  activeSlot Int      @default(1)
+  updatedAt  DateTime @updatedAt
+
+  @@map("parent_state")
 }

@@ -27,7 +27,7 @@ export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', '
 // Обязательные системные экраны — не часть карты пути, но текст в них
 // показывается родителю, поэтому по правилу 1 CLAUDE.md тоже живёт в YAML.
 export const SYSTEM_SCREEN_KEYS = [
-  'kc', 'menu', 'stop', 'stale', 'phone_invalid', 'in_progress', 'status_complete', 'status_card', 'platform',
+  'kc', 'menu', 'stop', 'stale', 'phone_invalid', 'in_progress', 'status_complete', 'status_card', 'platform', 'heroes',
 ] as const;
 export type SystemScreenKey = (typeof SYSTEM_SCREEN_KEYS)[number];
 
@@ -192,7 +192,8 @@ export const SystemScreenSchema = z.object({
   // Путь к картинке-заглушке (сейчас — "раздел в разработке" на in_progress),
   // тот же формат и то же место хранения (assets/shots), что у ScreenSchema.
   image: z.string().optional(),
-  buttons: z.array(ButtonSchema).max(4).optional(),
+  // До 5: в меню пять пунктов (статус, сроки, платформа, мои герои, связь).
+  buttons: z.array(ButtonSchema).max(5).optional(),
 });
 export type SystemScreen = z.infer<typeof SystemScreenSchema>;
 
@@ -216,6 +217,8 @@ export const SystemScreensSchema = z.object({
   status_card: SystemScreenSchema,
   // "Платформа" из меню: где смотреть аттестации, ссылка на главную.
   platform: SystemScreenSchema,
+  // "Мои герои" из меню: дети родителя и «Добавить героя» (кнопки строит движок).
+  heroes: SystemScreenSchema,
 });
 export type SystemScreens = z.infer<typeof SystemScreensSchema>;
 
@@ -232,7 +235,16 @@ export const ScenarioSchema = z
     // Мелкие подписи интерфейса, которые ставит движок (правило 1 CLAUDE.md:
     // и они — в сценарии). answeredPrefix — перед выбранным ответом на
     // прошлом сообщении: «✓ Да, отправил».
-    ui: z.object({ answeredPrefix: z.string().default('') }).optional(),
+    // heroLabel / heroAdd — кнопки «Мои герои»; heroPrefix — строка над
+    // каждым шагом, когда у родителя больше одного ребёнка («Герой 2 · …»).
+    ui: z
+      .object({
+        answeredPrefix: z.string().default(''),
+        heroLabel: z.string().default(''),
+        heroAdd: z.string().default(''),
+        heroPrefix: z.string().default(''),
+      })
+      .optional(),
     screens: z.array(ScreenSchema).min(1),
     system: SystemScreensSchema,
   })

@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InlineKeyboard } from 'grammy';
 import type { Context } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,7 +7,7 @@ import { ScenarioService } from '../scenario/scenario.service';
 import { ScreenRendererService } from '../render/screen-renderer.service';
 import { Button, SYSTEM_SCREEN_KEYS, SystemScreenKey } from '../../scenario/schema';
 import { renderTemplate } from '../render/template.util';
-import { buildScreenKeyboard, buildSystemKeyboard, decodeCallback } from '../render/keyboard.util';
+import { buildScreenKeyboard, buildSystemKeyboard, decodeCallback, encodeCallback } from '../render/keyboard.util';
 import { normalizePhone } from './phone.util';
 import { sanitizeFreeText } from './sanitize.util';
 
@@ -30,10 +31,33 @@ export class EngineService {
     private readonly renderer: ScreenRendererService,
   ) {}
 
-  async getOrCreateUser(tgId: bigint): Promise<User> {
-    const existing = await this.prisma.user.findUnique({ where: { tgId } });
-    if (existing) return existing;
-    return this.prisma.user.create({ data: { tgId, stage: 's0' } });
+  // У родителя может быть несколько путей — по одному на ребёнка («Мои
+  // герои»). User — это путь одного ребёнка, slot — его номер; какой путь
+  // выбран сейчас, хранит parent_state.
+  async activeSlot(tgId: bigint): Promise<number> {
+    const p = await this.prisma.parentState.findUnique({ where: { tgId } });
+    return p?.activeSlot ?? 1;
+  }
+
+  private async setActive(tgId: bigint, slot: number): Promise<void> {
+    await this.prisma.parentState.upsert({
+      where: { tgId },
+      create: { tgId, activeSlot: slot },
+      update: { activeSlot: slot },
+    });
+  }
+
+  async getOrCreateUser(tgId: bigint, slot?: number): Promise<User> {
+    const want = slot ?? (await this.activeSlot(tgId));
+    const found = await this.prisma.user.findUnique({ where: { tgId_slot: { tgId, slot: want } } });
+    if (found) return found;
+    // Выбранного пути нет (его удалили) — берём первый оставшийся.
+    const any = await this.prisma.user.findFirst({ where: { tgId }, orderBy: { slot: 'asc' } });
+    if (any) {
+      await this.setActive(tgId, any.slot);
+      return any;
+    }
+    return this.prisma.user.create({ data: { tgId, slot: 1, stage: 's0' } });
   }
 
   // Точка входа: /start. Новому родителю показываем s0, вернувшемуся —
@@ -67,6 +91,10 @@ export class EngineService {
   private async showOverlay(ctx: Context, user: User, key: SystemScreenKey, backTarget?: 'menu'): Promise<void> {
     const sys = this.scenario.system[key];
     const text = renderTemplate(sys.text, this.renderer.buildVars(user));
+    if (key === 'heroes') {
+      await this.sendOverlay(ctx, user, text, sys.image, await this.heroesKeyboard(user), 'оверлея "heroes"', backTarget);
+      return;
+    }
     // "stop" — единственное исключение: после него возвращаться уже некуда,
     // данные пользователя удалены. Остальные оверлеи всегда получают
     // "← Назад", если только в самом сценарии уже нет кнопки с тем же
@@ -92,6 +120,50 @@ export class EngineService {
       includeBack: true,
     });
     await this.sendOverlay(ctx, user, text, screen.image, kb, `сроков "${id}"`, backTarget);
+  }
+
+  // «Мои герои»: по кнопке на каждого ребёнка и «Добавить героя». Подписи —
+  // шаблоны из сценария (ui.heroLabel, ui.heroAdd), данные — из базы.
+  private async heroesKeyboard(user: User): Promise<InlineKeyboard> {
+    const all = await this.prisma.user.findMany({ where: { tgId: user.tgId }, orderBy: { slot: 'asc' } });
+    const kb = new InlineKeyboard();
+    for (const j of all) {
+      const label = renderTemplate(this.scenario.ui.heroLabel, { ...this.renderer.buildVars(j), isActive: j.slot === user.slot });
+      kb.text(label, encodeCallback('heroes', `hero.${j.slot}`, user.renderVersion, user.slot)).row();
+    }
+    kb.text(this.scenario.ui.heroAdd, encodeCallback('heroes', 'hero.add', user.renderVersion, user.slot)).row();
+    kb.text('← Назад', encodeCallback('heroes', '__overlay_back', user.renderVersion, user.slot)).row();
+    return kb;
+  }
+
+  // Выбор героя в «Мои герои»: переключиться на его путь или начать новый.
+  private async handleHero(ctx: Context, user: User, data: string): Promise<void> {
+    if (user.lastOverlayMessageId) {
+      await ctx.api.deleteMessage(ctx.chat!.id, user.lastOverlayMessageId).catch(() => {});
+      await this.prisma.user.update({ where: { id: user.id }, data: { lastOverlayMessageId: null } }).catch(() => {});
+    }
+    if (data === 'hero.add') {
+      // Новый ребёнок: согласие и имя родителя уже есть — сразу выбор пакета.
+      const max = await this.prisma.user.aggregate({ where: { tgId: user.tgId }, _max: { slot: true } });
+      const created = await this.prisma.user.create({
+        data: {
+          tgId: user.tgId,
+          slot: (max._max.slot ?? 0) + 1,
+          stage: 's3',
+          name: user.name,
+          phone: user.phone,
+          consentAt: user.consentAt,
+        },
+      });
+      await this.setActive(user.tgId, created.slot);
+      await this.render(ctx, created, 's3', { pushHistory: false });
+      return;
+    }
+    const slot = Number(data.replace(/^hero\./, ''));
+    const target = await this.prisma.user.findUnique({ where: { tgId_slot: { tgId: user.tgId, slot } } });
+    if (!target) return;
+    await this.setActive(user.tgId, slot);
+    await this.render(ctx, target, target.stage, { pushHistory: false });
   }
 
   private async sendOverlay(
@@ -123,7 +195,9 @@ export class EngineService {
   private async wipeUser(ctx: Context, user: User): Promise<void> {
     // S1a «Удалить мои данные» — п.5 CLAUDE.md: реально стираем, не просто скрываем.
     // Cascade в prisma/schema.prisma удаляет answers/checklist_items/jobs вместе с users.
-    await this.prisma.user.delete({ where: { id: user.id } });
+    // Удаляются пути всех детей родителя — «мои данные» значат все.
+    await this.prisma.user.deleteMany({ where: { tgId: user.tgId } });
+    await this.prisma.parentState.deleteMany({ where: { tgId: user.tgId } });
     await ctx.reply(this.scenario.system.stop.text, { parse_mode: 'HTML' });
   }
 
@@ -159,6 +233,7 @@ export class EngineService {
   // и начать заново, без ручного удаления чата и правок базы.
   async reset(ctx: Context, tgId: bigint): Promise<void> {
     await this.prisma.user.deleteMany({ where: { tgId } });
+    await this.prisma.parentState.deleteMany({ where: { tgId } });
     await this.start(ctx, tgId);
   }
 
@@ -195,11 +270,30 @@ export class EngineService {
     // Родителя нет в базе (новый или его данные стёрли), а нажата кнопка
     // старого сообщения — начинаем с приветствия, без «этот шаг вы уже прошли»
     // (протокол КС 07.10: так выглядело как сбой).
-    if (!(await this.prisma.user.findUnique({ where: { tgId } }))) {
+    if (!(await this.prisma.user.findFirst({ where: { tgId } }))) {
       await this.start(ctx, tgId);
       return;
     }
-    const user = await this.getOrCreateUser(tgId);
+    // В кнопке зашит номер героя — нажатие относится к его пути, даже если
+    // родитель сейчас «на другом» (например, напоминание о втором ребёнке).
+    let user: User;
+    if (decoded.slot) {
+      const own = await this.prisma.user.findUnique({ where: { tgId_slot: { tgId, slot: decoded.slot } } });
+      if (!own) {
+        await this.start(ctx, tgId);
+        return;
+      }
+      if (own.slot !== (await this.activeSlot(tgId))) await this.setActive(tgId, own.slot);
+      user = own;
+    } else {
+      user = await this.getOrCreateUser(tgId);
+    }
+
+    // «Мои герои»: кнопки строятся из базы, в сценарии их нет.
+    if (decoded.screenId === 'heroes' && decoded.data !== '__overlay_back') {
+      await this.handleHero(ctx, user, decoded.data);
+      return;
+    }
 
     // Кнопка оверлея (меню/КС/stale/...) кодирует свой ключ вместо screen_id —
     // она не привязана к user.stage и НАМЕРЕННО обходит проверку версии/

@@ -40,6 +40,12 @@ version: "0.2.0"
 ui:
   # Ставится перед выбранным ответом на прошлом сообщении: «✓ Да, отправил».
   answeredPrefix: "✓ "
+  # «Мои герои» — несколько детей у одного родителя (протокол КС 07.10.2026).
+  # Имена детей не собираем (правило 5 CLAUDE.md) — ребёнок = номер, пакет, класс.
+  heroLabel: "{{#if isActive}}● {{/if}}Герой {{slot}}{{#if package}} · {{package}}{{/if}}{{#if class}}, {{class}} класс{{/if}}"
+  heroAdd: "＋ Добавить героя"
+  # Строка над каждым шагом, когда детей больше одного.
+  heroPrefix: "🦸 <b>Герой {{slot}}</b>{{#if package}} · {{package}}{{/if}}{{#if class}}, {{class}} класс{{/if}}"
 
 packageFlags:
   isGraduate: ["Базовый без ГИА", "Базовый с ГИА", "Классный Выпускник"]
@@ -87,6 +93,7 @@ system:
       - { label: "Статус зачисления", data: menu.status, next: status }
       - { label: "Важные сроки", data: menu.dates, next: dates }
       - { label: "Платформа", data: menu.platform, next: platform }
+      - { label: "Мои герои", data: menu.heroes, next: heroes }
       - { label: "{{#if hasCurator}}{{curatorLabel}}{{else}}Написать в клиентский сервис{{/if}}", url: "{{#if hasCurator}}{{curatorUrl}}{{else}}https://t.me/{{kc_username}}?start={{kc_context}}{{/if}}" }
 
   # «Статус зачисления» из меню, пока путь не пройден: где родитель сейчас.
@@ -105,6 +112,15 @@ system:
 
   # «Платформа» из меню (вместо «Мои аттестации»). Только главная страница —
   # прямых ссылок на разделы не даём (правило 7 CLAUDE.md).
+  # «Мои герои»: кнопки детей строит движок по базе (подписи — ui.heroLabel),
+  # плюс «Добавить героя». ● — тот, чей путь сейчас открыт.
+  heroes:
+    image: "shots/s4-nine-class-doors.jpg"
+    text: |-
+      <b>Мои герои</b>
+
+      Если на обучении несколько детей — у каждого свой путь. Выберите, чей путь показать, или добавьте ещё одного героя.
+
   platform:
     image: "shots/e1-6-school-building.jpg"
     text: |-
