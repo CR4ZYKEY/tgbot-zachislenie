@@ -20,11 +20,15 @@ import { z } from 'zod';
 // - previous        — вернуться на экран, с которого пришли (как «← Назад»).
 //   Для экранов, которые напоминание показывает поверх текущего шага
 //   (продление со скидкой): ответили — и обратно к своему шагу.
-export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait', 'previous'] as const;
+// - dates           — «Важные сроки»: экран из packageVars.datesScreen по пакету
+//   родителя (dates_none, пока пакет не выбран), показывается как оверлей.
+export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait', 'previous', 'dates'] as const;
 
 // Обязательные системные экраны — не часть карты пути, но текст в них
 // показывается родителю, поэтому по правилу 1 CLAUDE.md тоже живёт в YAML.
-export const SYSTEM_SCREEN_KEYS = ['kc', 'menu', 'stop', 'stale', 'phone_invalid', 'in_progress', 'status_complete'] as const;
+export const SYSTEM_SCREEN_KEYS = [
+  'kc', 'menu', 'stop', 'stale', 'phone_invalid', 'in_progress', 'status_complete', 'status_card', 'platform',
+] as const;
 export type SystemScreenKey = (typeof SYSTEM_SCREEN_KEYS)[number];
 
 const idRegex = /^[a-z0-9_.]+$/;
@@ -208,6 +212,10 @@ export const SystemScreensSchema = z.object({
   // "Статус зачисления" из меню, когда экран пользователя помечен
   // screen.terminal (см. ScreenSchema) — вместо повтора финального экрана.
   status_complete: SystemScreenSchema,
+  // "Статус зачисления" из меню, пока путь не пройден: пакет, класс, текущий шаг.
+  status_card: SystemScreenSchema,
+  // "Платформа" из меню: где смотреть аттестации, ссылка на главную.
+  platform: SystemScreenSchema,
 });
 export type SystemScreens = z.infer<typeof SystemScreensSchema>;
 
@@ -221,6 +229,10 @@ export const ScenarioSchema = z
     // Значения для шаблонов по тарифу: {{curatorUrl}} — ссылка на куратора
     // того тарифа, который выбрал родитель (у выпускников и «Классного» разные).
     packageVars: z.record(z.string().regex(/^\w+$/), z.record(z.string(), z.string())).optional(),
+    // Мелкие подписи интерфейса, которые ставит движок (правило 1 CLAUDE.md:
+    // и они — в сценарии). answeredPrefix — перед выбранным ответом на
+    // прошлом сообщении: «✓ Да, отправил».
+    ui: z.object({ answeredPrefix: z.string().default('') }).optional(),
     screens: z.array(ScreenSchema).min(1),
     system: SystemScreensSchema,
   })
@@ -359,6 +371,20 @@ export const ScenarioSchema = z
           });
         }
       }
+    }
+
+    // «Важные сроки» показывают экран по пакету — опечатка в id тихо отдала бы
+    // родителю пустой экран dates_none.
+    for (const [pkg, id] of Object.entries(scenario.packageVars?.datesScreen ?? {})) {
+      if (!ids.has(id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `packageVars.datesScreen["${pkg}"] ссылается на несуществующий экран "${id}"`,
+        });
+      }
+    }
+    if (scenario.packageVars?.datesScreen && !ids.has('dates_none')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Нет экрана dates_none для «Важных сроков» без пакета' });
     }
 
     for (const key of SYSTEM_SCREEN_KEYS) {

@@ -29,6 +29,13 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
       await this.engine.start(ctx, BigInt(ctx.from!.id));
     });
 
+    // /reset — только в тестовом боте: сбросить прогресс и начать заново.
+    if (process.env.ALLOW_RESET === '1') {
+      this.bot.command('reset', async (ctx) => {
+        await this.engine.reset(ctx, BigInt(ctx.from!.id));
+      });
+    }
+
     this.bot.command('status', async (ctx) => {
       await this.engine.runStatusCommand(ctx, BigInt(ctx.from!.id));
     });

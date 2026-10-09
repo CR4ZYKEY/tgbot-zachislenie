@@ -35,7 +35,7 @@ screens:
 
       <b>1. Доступ к платформе</b> — 1 день после оплаты
       <b>2. Зачисление в школу</b> — 10 дней
-      <b>3. Прикрепление к школе для экзамена</b> — осень 2026
+      <b>3. Аттестация, открепление и школа по месту жительства</b> — до 1 декабря 2026
       <b>4. Заявления на {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}</b> — с 1 октября 2026
       <b>5. Подготовка и пробники</b> — осень – весна
       <b>6. {{#if grade11}}Итоговое сочинение{{else}}Итоговое собеседование{{/if}}</b> — {{#if grade11}}2 декабря 2026{{else}}10 февраля 2027{{/if}}
@@ -50,7 +50,7 @@ screens:
         - at: "2026-10-01"
           minDaysFromStart: 0
           screen: g4_1
-          waitingScreens: &before_applied [g2_6, g3_0, g3_1, g3_how, g3_later, g4_1, g4_how, g4_later]
+          waitingScreens: &before_applied [g2_6, g3_0, g3_wait, g3_1, g3_how, g3_later, g3_attach, g3_attach_later, g4_1, g4_how, g4_later]
         # 11: заявление на сочинение принимают до 18 ноября.
         - at: "2026-11-11"
           minDaysFromStart: 0
@@ -62,13 +62,13 @@ screens:
           minDaysFromStart: 0
           forClass: ["11"]
           screen: g6_1
-          waitingScreens: &before_admission [g2_6, g3_0, g3_1, g3_how, g3_later, g4_1, g4_how, g4_later, g5_1, g5_mcko, g5_res, g5_wait, g5_dates]
+          waitingScreens: &before_admission [g2_6, g3_0, g3_wait, g3_1, g3_how, g3_later, g3_attach, g3_attach_later, g4_1, g4_how, g4_later, g5_1, g5_mcko, g5_res, g5_wait, g5_dates]
         # ✎ ≈ 15.12: опубликовано расписание ОГЭ / ЕГЭ. У 11 класса к этому
         # времени сочинение позади — они ждут результата на шаге 6.
         - at: "2026-12-15"
           minDaysFromStart: 0
           screen: g5_dates
-          waitingScreens: [g2_6, g3_0, g3_1, g3_how, g3_later, g4_1, g4_how, g4_later, g5_1, g5_mcko, g5_res, g5_wait, g6_ready, g6_late, g6_retry]
+          waitingScreens: [g2_6, g3_0, g3_wait, g3_1, g3_how, g3_later, g3_attach, g3_attach_later, g4_1, g4_how, g4_later, g5_1, g5_mcko, g5_res, g5_wait, g6_ready, g6_late, g6_retry]
         # ✎ ≈ 16.12, 11: как прошло сочинение.
         - at: "2026-12-16"
           minDaysFromStart: 0
@@ -103,6 +103,15 @@ screens:
           minDaysFromStart: 0
           screen: g7_results
           waitingScreens: [g7_1, g7_notice, g7_ask, g7_day]
+        # Аттестация и открепление — до 1 декабря (протокол КС 07.10.2026).
+        - at: "2026-11-10"
+          minDaysFromStart: 0
+          screen: g3_1
+          waitingScreens: [g2_6, g3_0, g3_wait, g3_how, g3_later]
+        - at: "2026-11-24"
+          minDaysFromStart: 0
+          screen: g3_1
+          waitingScreens: [g2_6, g3_0, g3_wait, g3_how, g3_later, g3_1]
     buttons:
       - { label: "Начинаем", data: g_map.go, next: g1_1 }
     back: g_s5
@@ -523,60 +532,117 @@ screens:
       - { label: "Дальше — к экзаменам", data: g2_6.next, next: g3_0 }
     menu: true
 
-  # ─────────── Путь выпускника · Шаг 3. Прикрепление к школе для экзамена ───────────
+  # ─────────── Путь выпускника · Шаг 3. Аттестация, открепление, школа по месту жительства ───────────
+  # По протоколу тестирования КС 07.10.2026: ГИА проходит в школе по месту
+  # жительства. До 1 декабря — промежуточная аттестация у нас и открепление
+  # (отчисление), это и для 9, и для 11 класса. Сразу после зачисления не
+  # спрашиваем «прикрепились?» — сначала объясняем порядок, вопросы задают
+  # напоминания с g_map (10.11 и 24.11).
 
   - id: g3_0
     stage: graduate_attach
-    stepLabel: "<b>Шаг 3 из 8 · Прикрепление к школе</b>"
+    stepLabel: "<b>Шаг 3 из 8 · Аттестация и открепление</b>"
     image: "shots/g3-0-exam-road-begins.jpg"
-    text: >-
-      Дальше — путь к {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}. Пакет «Базовый» закрывает
-      промежуточную аттестацию, а экзамены семья проходит сама. Я подскажу,
-      что и когда делать.
+    text: |-
+      {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} ваш герой сдаёт в <b>школе по месту жительства</b> — пакет «Базовый» закрывает только промежуточную аттестацию.
+
+      Порядок такой:
+      1. Пройти у нас промежуточную аттестацию — до <b>1 декабря</b>.
+      2. Получить справку с оценками.
+      3. Открепиться от нашей школы — тоже до <b>1 декабря</b>.
+      4. Прикрепиться к школе по месту жительства — там будут экзамены и аттестат.
     buttons:
-      - { label: "Понятно, начинаем", data: g3_0.ok, next: g3_1 }
+      - { label: "Понятно", data: g3_0.ok, next: g3_wait }
+      - { label: "Как это сделать?", data: g3_0.how, next: g3_how }
     menu: true
 
+  - id: g3_wait
+    stage: graduate_attach
+    stepLabel: "<b>Шаг 3 из 8 · Аттестация и открепление</b>"
+    image: "shots/attest-keep-going.jpg"
+    text: |-
+      Договорились! Аттестацию и открепление нужно закончить до <b>1 декабря</b> — я напомню заранее.
+
+      Если справитесь раньше — нажмите кнопку ниже.
+    buttons:
+      - { label: "Аттестация пройдена, открепились", data: g3_wait.done, next: g3_attach }
+      - { label: "Как это сделать?", data: g3_wait.how, next: g3_how }
+    menu: true
+
+  # Напоминания 10.11 и 24.11 (календарь на g_map).
   - id: g3_1
     stage: graduate_attach
-    stepLabel: "<b>Шаг 3 из 8 · Прикрепление к школе</b>"
-    image: "shots/g3-exam-school-gate.jpg"
-    text: >-
-      Сначала выберите школу, где ваш герой будет сдавать
-      {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}, и прикрепитесь к ней. Аттестат потом
-      выдаст именно она. Уже прикрепились?
+    stepLabel: "<b>Шаг 3 из 8 · Аттестация и открепление</b>"
+    image: "shots/attest-last-stones.jpg"
+    text: |-
+      📅 Промежуточная аттестация и открепление от нашей школы — до <b>1 декабря</b>.
+
+      <b>Как успехи?</b>
     buttons:
-      - { label: "Да", data: g3_1.yes, next: g4_1 }
-      - { label: "Ещё нет", data: g3_1.no, next: g3_later }
+      - { label: "Всё сделано", data: g3_1.yes, next: g3_attach }
+      - { label: "Ещё в процессе", data: g3_1.no, next: g3_later }
       - { label: "Как это сделать?", data: g3_1.how, next: g3_how }
     menu: true
 
   - id: g3_how
     stage: graduate_attach
-    stepLabel: "<b>Шаг 3 из 8 · Прикрепление к школе</b>"
+    stepLabel: "<b>Шаг 3 из 8 · Аттестация и открепление</b>"
     image: "shots/g3-attach-how.jpg"
     text: |-
-      Порядок такой:
-      1) Открепитесь от школы, где проходили промежуточную аттестацию.
-      2) Узнайте условия и сроки прикрепления в выбранной школе — у каждой они свои.
-      3) Прикрепитесь, приложив справку с оценками за промежуточную аттестацию.
+      Вот как это сделать:
+      1. Сдайте все аттестации на платформе и нажмите «Завершить класс».
+      2. Скачайте справку с оценками: «Секретариат» → «Мои справки».
+      3. Открепитесь от нашей школы — клиентский сервис подскажет, как оформить.
+      4. Прикрепитесь к школе по месту жительства, приложив справку. Условия и сроки у каждой школы свои.
     buttons:
-      - { label: "Понятно", data: g3_how.ok, next: g3_1 }
+      - { label: "Понятно", data: g3_how.ok, next: previous }
       - { label: "Нужна помощь", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+    menu: true
 
   - id: g3_later
     stage: graduate_attach
-    stepLabel: "<b>Шаг 3 из 8 · Прикрепление к школе</b>"
+    stepLabel: "<b>Шаг 3 из 8 · Аттестация и открепление</b>"
     image: "shots/g3-later-bench.jpg"
-    text: >-
-      Хорошо. Прикрепиться нужно до подачи заявлений на экзамен — загляну
-      через несколько дней.
+    text: |-
+      Хорошо, не буду торопить — загляну через несколько дней.
+
+      📅 Аттестацию и открепление нужно закончить до <b>1 декабря</b>.
     reminders:
       waitingScreens: [g3_later]
       schedule:
-        - { afterHours: 72, screen: g3_1 }
+        - { afterHours: 72, screen: g3_1, rearm: true }
     buttons:
-      - { label: "Уже прикрепились", data: g3_later.done, next: g4_1 }
+      - { label: "Всё сделано", data: g3_later.done, next: g3_attach }
+    menu: true
+
+  - id: g3_attach
+    stage: graduate_attach
+    stepLabel: "<b>Шаг 3 из 8 · Школа по месту жительства</b>"
+    image: "shots/g3-exam-school-gate.jpg"
+    text: |-
+      Отлично! Теперь прикрепитесь к <b>школе по месту жительства</b> — там ваш герой сдаёт {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}}, и она же выдаст аттестат.
+
+      Условия и сроки прикрепления у каждой школы свои — уточните их заранее.
+
+      <b>Уже прикрепились?</b>
+    buttons:
+      - { label: "Да", data: g3_attach.yes, next: g4_1 }
+      - { label: "Ещё нет", data: g3_attach.no, next: g3_attach_later }
+      - { label: "Нужна помощь", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
+    menu: true
+
+  - id: g3_attach_later
+    stage: graduate_attach
+    stepLabel: "<b>Шаг 3 из 8 · Школа по месту жительства</b>"
+    image: "shots/grades-certificate-soon.jpg"
+    text: |-
+      Хорошо. Прикрепиться нужно до подачи заявлений на экзамен — загляну через несколько дней.
+    reminders:
+      waitingScreens: [g3_attach_later]
+      schedule:
+        - { afterHours: 72, screen: g3_attach, rearm: true }
+    buttons:
+      - { label: "Уже прикрепились", data: g3_attach_later.done, next: g4_1 }
     menu: true
 
   # ─────────── Путь выпускника · Шаг 4. Заявления на экзамен и допуск ───────────
@@ -626,11 +692,11 @@ screens:
     stepLabel: "<b>Шаг 5 из 8 · Подготовка</b>"
     image: "shots/g5-practice-hall.jpg"
     text: >-
-      Даты {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} публикуют в декабре — напомню, когда
-      появятся. А пока можно пройти пробный экзамен: это не обязательно, но так
-      ваш герой заранее увидит бланки и тайминг.
+      Расписание {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} публикуют в декабре — я сам напишу, когда
+      оно появится. А пока можно пройти пробный экзамен: это по желанию, не
+      обязательно — но так ваш герой заранее увидит бланки и тайминг.
     buttons:
-      - { label: "Как записаться", data: g5_1.mcko, next: g5_mcko }
+      - { label: "Пробный экзамен МЦКО (по желанию)", data: g5_1.mcko, next: g5_mcko }
       - { label: "Где готовиться", data: g5_1.res, next: g5_res }
       - { label: "Пока не нужно", data: g5_1.skip, next: g5_wait }
     menu: true
@@ -859,3 +925,20 @@ screens:
     text: >-
       ✦ <b>Путь выпускника пройден.</b> Аттестат в руках — поздравляем вашего героя!
     menu: true
+
+  # ─────────── «Важные сроки» из меню (справка, не шаг пути) ───────────
+
+  - id: g_dates
+    stage: graduate_start
+    image: "shots/g4-calendar-board.jpg"
+    text: |-
+      📅 <b>Важные сроки · Базовый без ГИА, {{class}} класс</b>
+
+      • Зачисление — около 10 дней после оплаты
+      • Промежуточная аттестация и открепление — до <b>1 декабря 2026</b>
+      • Прикрепление к школе по месту жительства — после открепления
+      • Заявления на {{#if grade11}}ЕГЭ и сочинение{{else}}ОГЭ и собеседование{{/if}} — не позднее чем за 2 недели до мероприятия
+      • {{#if grade11}}Итоговое сочинение — <b>2 декабря 2026</b>{{else}}Итоговое собеседование — <b>10 февраля 2027</b>{{/if}}
+      • Расписание экзаменов — декабрь 2026
+      • {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} — весна–лето 2027
+      • Аттестат — лето 2027, в школе по месту жительства

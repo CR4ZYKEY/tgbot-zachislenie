@@ -36,6 +36,11 @@ version: "0.2.0"
 
 # Флаги для шаблонов текстов: {{#if isGraduate}}…{{/if}} и т.п. Истинны, если
 # package родителя — один из перечисленных (пишут кнопки s3, s_gia, k_class).
+# Мелкие подписи интерфейса.
+ui:
+  # Ставится перед выбранным ответом на прошлом сообщении: «✓ Да, отправил».
+  answeredPrefix: "✓ "
+
 packageFlags:
   isGraduate: ["Базовый без ГИА", "Базовый с ГИА", "Классный Выпускник"]
   # С ГИА на всех шагах помогает куратор выпускников, а не клиентский сервис.
@@ -43,6 +48,13 @@ packageFlags:
 
 # Значения для шаблонов по тарифу ({{curatorUrl}}, {{curatorLabel}}).
 packageVars:
+  # Экран «Важные сроки» для пакета (меню → «Важные сроки»). Нет пакета — dates_none.
+  datesScreen:
+    "Базовый": "e_dates"
+    "Базовый без ГИА": "g_dates"
+    "Базовый с ГИА": "bg_dates"
+    "Классный Выпускник": "kg_dates"
+    "Классный": "kb_dates"
   curatorUrl:
     "Базовый с ГИА": "https://t.me/giahssc_bot"
     "Классный Выпускник": "https://t.me/giahssc_bot"
@@ -73,9 +85,35 @@ system:
     text: "☰ <b>Меню</b>"
     buttons:
       - { label: "Статус зачисления", data: menu.status, next: status }
-      - { label: "Мои аттестации", data: menu.subjects, next: in_progress }
-      - { label: "Важные сроки", data: menu.dates, next: in_progress }
+      - { label: "Важные сроки", data: menu.dates, next: dates }
+      - { label: "Платформа", data: menu.platform, next: platform }
       - { label: "{{#if hasCurator}}{{curatorLabel}}{{else}}Написать в клиентский сервис{{/if}}", url: "{{#if hasCurator}}{{curatorUrl}}{{else}}https://t.me/{{kc_username}}?start={{kc_context}}{{/if}}" }
+
+  # «Статус зачисления» из меню, пока путь не пройден: где родитель сейчас.
+  # {{currentStep}} — заголовок шага текущего экрана (движок), пусто на старте.
+  status_card:
+    image: "shots/menu-control-podium.jpg"
+    text: |-
+      <b>Статус</b>
+
+      {{#if package}}Пакет: <b>{{package}}</b>{{/if}}{{#if class}}, {{class}} класс{{/if}}
+      {{#if currentStep}}Сейчас: {{currentStep}}{{else}}Сейчас: знакомство и выбор пакета{{/if}}
+
+      <b>Продолжим с этого шага?</b>
+    buttons:
+      - { label: "Продолжить с этого шага", data: status_card.go, next: current_screen }
+
+  # «Платформа» из меню (вместо «Мои аттестации»). Только главная страница —
+  # прямых ссылок на разделы не даём (правило 7 CLAUDE.md).
+  platform:
+    image: "shots/e1-6-school-building.jpg"
+    text: |-
+      Аттестации и прогресс — на платформе:
+      📍 здание «<b>Школа</b>» → учебный класс → «<b>База знаний</b>»
+
+      Там же тренажёры аттестаций и кнопка «Завершить класс».
+    buttons:
+      - { label: "Открыть платформу", url: "https://edpalm.land" }
 
   stop:
     text: |-
@@ -150,7 +188,7 @@ screens:
       • пакет и класс;
       • статус, ответы по шагам и отметки чек-листов.
 
-      Срок хранения — год. Видят данные только секретариат и клиентский сервис — в рамках вашего зачисления.
+      Срок хранения — год. Видят данные только сотрудники клиентского сервиса — в рамках вашего зачисления.
     buttons:
       - { label: "Согласен, продолжить", data: s1a.ok, next: s2 }
       - { label: "Удалить мои данные", data: s1a.wipe, next: stop }
@@ -229,7 +267,7 @@ screens:
       <b>Какой у вас пакет?</b>
     buttons:
       - { label: "Базовый с ГИА", data: s_gia.yes, next: bg_s5, setField: { field: package, value: "Базовый с ГИА" } }
-      - { label: "Базовый, без ГИА", data: s_gia.no, next: g_s5, setField: { field: package, value: "Базовый без ГИА" } }
+      - { label: "Базовый без ГИА", data: s_gia.no, next: g_s5, setField: { field: package, value: "Базовый без ГИА" } }
       - { label: "Не знаю — спросить", url: "https://t.me/{{kc_username}}?start={{kc_context}}" }
     back: s4b
 
@@ -1009,3 +1047,25 @@ screens:
     buttons:
       - { label: "Продление со скидкой", data: e_done.renew, next: e6_1 }
     menu: true
+
+  # ─────────────────── «Важные сроки» из меню (справка, не шаг пути) ───────────────────
+
+  - id: dates_none
+    stage: start
+    image: "shots/g4-calendar-board.jpg"
+    text: |-
+      📅 <b>Важные сроки</b>
+
+      Сроки зависят от пакета и класса — выберите их, и я покажу ваши даты.
+
+  - id: e_dates
+    stage: start
+    image: "shots/g4-calendar-board.jpg"
+    text: |-
+      📅 <b>Важные сроки · Базовый</b>
+
+      • Зачисление — около 10 дней после оплаты
+      • Все аттестации — до <b>31 мая 2027</b>
+      • «Завершить класс» — до <b>31 мая 2027</b>
+      • Справка с оценками — после завершения класса
+      • Продление со скидкой — до <b>31 мая 2027</b>

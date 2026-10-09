@@ -4,13 +4,14 @@ import { existsSync } from 'fs';
 import { readFile, stat } from 'fs/promises';
 import { basename, relative, resolve } from 'path';
 import { GrammyError, InputFile } from 'grammy';
-import type { Api, InlineKeyboard } from 'grammy';
+import { InlineKeyboard } from 'grammy';
+import type { Api } from 'grammy';
 import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
 import { Button, Reminder, Screen } from '../../scenario/schema';
 import { renderTemplate, TemplateVars } from './template.util';
-import { buildScreenKeyboard } from './keyboard.util';
+import { buildScreenKeyboard, encodeCallback } from './keyboard.util';
 import { reminderDateToRunAt, reminderHoursToMs } from './reminder-timing.util';
 
 const HISTORY_LIMIT = 50;
@@ -24,6 +25,9 @@ export interface RenderOptions {
   // в ответ на действие родителя. Влияет только на счётчик неотвеченных
   // касаний: ответное сообщение его обнуляет, напоминание — увеличивает.
   byUser?: boolean;
+  // Подпись кнопки, которую родитель только что нажал: на прошлом сообщении
+  // вместо его кнопок останется одна неактивная «✓ <ответ>» — видно, что выбрано.
+  answeredLabel?: string;
 }
 
 // Показ экрана сценария в конкретный чат. Вынесено из движка, потому что
@@ -51,7 +55,8 @@ export class ScreenRendererService {
   ) {}
 
   buildVars(user: User): TemplateVars {
-    return {
+    const vars: TemplateVars = {
+      package: user.package,
       isReturning: user.isReturning ?? false,
       class: user.class,
       name: user.name,
@@ -67,6 +72,11 @@ export class ScreenRendererService {
         Object.entries(this.scenario.packageVars).map(([name, byPackage]) => [name, byPackage[user.package ?? ''] ?? '']),
       ),
     };
+    // Заголовок шага, на котором родитель сейчас («Шаг 5 из 8 · Подготовка»),
+    // без разметки — для карточки «Статус зачисления». На старте пусто.
+    const current = this.scenario.hasScreen(user.stage) ? this.scenario.getScreen(user.stage).stepLabel : undefined;
+    vars.currentStep = current ? renderTemplate(current, vars).replace(/<[^>]+>/g, '') : '';
+    return vars;
   }
 
   // Переменные для кнопок: и ссылки КС, и подписи вроде «Решу ОГЭ / Решу ЕГЭ».
@@ -134,7 +144,7 @@ export class ScreenRendererService {
     const sent = await this.sendTextOrPhoto(api, chatId, assetPath, text, kb);
     if (sent.message_id !== updated.lastMessageId) {
       await this.prisma.user.update({ where: { id: updated.id }, data: { lastMessageId: sent.message_id } });
-      await this.stripKeyboard(api, chatId, updated.lastMessageId);
+      await this.stripKeyboard(api, chatId, updated.lastMessageId, opts.answeredLabel, updated);
     }
 
     await this.scheduleReminders(updated, screen);
@@ -146,9 +156,17 @@ export class ScreenRendererService {
   // отправки нового — если отправка не удалась, старые кнопки ещё рабочие.
   // Сбой тут не критичен (сообщение удалили руками и т.п.): на случай
   // уцелевших кнопок есть проверка renderVersion в движке («Старые кнопки»).
-  private async stripKeyboard(api: Api, chatId: number, messageId: number | null): Promise<void> {
+  private async stripKeyboard(api: Api, chatId: number, messageId: number | null, answeredLabel?: string, user?: User): Promise<void> {
     if (!messageId) return;
-    await api.editMessageReplyMarkup(chatId, messageId).catch((err) => {
+    // Ответ родителя оставляем на сообщении неактивной кнопкой — иначе в
+    // истории видны только вопросы бота, а что выбрано, не видно.
+    const answered = answeredLabel && user
+      ? new InlineKeyboard().text(
+          this.scenario.ui.answeredPrefix + renderTemplate(answeredLabel, this.buildVars(user)),
+          encodeCallback('done', '__done', 0),
+        )
+      : undefined;
+    await api.editMessageReplyMarkup(chatId, messageId, answered ? { reply_markup: answered } : undefined).catch((err) => {
       const msg = err instanceof Error ? err.message : String(err);
       if (!/message is not modified/i.test(msg)) this.logger.warn(`Не удалось снять кнопки с сообщения ${messageId}: ${msg}`);
     });

@@ -50,7 +50,7 @@ export class EngineService {
     ctx: Context,
     user: User,
     targetScreenId: string,
-    opts: { pushHistory: boolean; extraButtons?: Button[] } = { pushHistory: true },
+    opts: { pushHistory: boolean; extraButtons?: Button[]; answeredLabel?: string } = { pushHistory: true },
   ): Promise<void> {
     await this.renderer.renderScreen(ctx.api, ctx.chat!.id, user, targetScreenId, opts);
   }
@@ -75,14 +75,41 @@ export class EngineService {
     const kb = buildSystemKeyboard(sys, key, user.renderVersion, this.renderer.urlVars(user), {
       includeBack: key !== 'stop' && !alreadyHasReturn,
     });
+    await this.sendOverlay(ctx, user, text, sys.image, kb, `оверлея "${key}"`, backTarget);
+  }
 
+  // «Важные сроки» из меню: экран сроков для пакета родителя (packageVars.
+  // datesScreen в сценарии), пока пакет не выбран — dates_none. Показывается
+  // как оверлей: в ленту пути не входит и stage не двигает.
+  private async showDates(ctx: Context, user: User, backTarget?: 'menu'): Promise<void> {
+    const byPackage = this.scenario.packageVars.datesScreen ?? {};
+    const wanted = byPackage[user.package ?? ''];
+    const id = wanted && this.scenario.hasScreen(wanted) ? wanted : 'dates_none';
+    const screen = this.scenario.getScreen(id);
+    const text = renderTemplate(screen.text, this.renderer.buildVars(user));
+    // «← Назад» с ключом системного экрана — обрабатывается как у любого оверлея.
+    const kb = buildSystemKeyboard({ text }, 'in_progress', user.renderVersion, this.renderer.urlVars(user), {
+      includeBack: true,
+    });
+    await this.sendOverlay(ctx, user, text, screen.image, kb, `сроков "${id}"`, backTarget);
+  }
+
+  private async sendOverlay(
+    ctx: Context,
+    user: User,
+    text: string,
+    image: string | undefined,
+    kb: ReturnType<typeof buildSystemKeyboard>,
+    label: string,
+    backTarget?: 'menu',
+  ): Promise<void> {
     const chatId = ctx.chat!.id;
     if (user.lastOverlayMessageId) {
       await ctx.api.deleteMessage(chatId, user.lastOverlayMessageId).catch(() => {
         // Сообщение могли удалить руками или оно устарело для удаления — не критично.
       });
     }
-    const assetPath = this.renderer.resolveAsset(sys.image, `оверлея "${key}"`);
+    const assetPath = this.renderer.resolveAsset(image, label);
     const sent = await this.renderer.sendTextOrPhoto(ctx.api, chatId, assetPath, text, kb);
     // overlayBackTarget перезаписывается на каждый показ — иначе значение от
     // предыдущего оверлея (например, "menu" от КС) протекло бы в следующий
@@ -122,11 +149,17 @@ export class EngineService {
       await this.prisma.user.update({ where: { id: user.id }, data: { lastOverlayMessageId: null } }).catch(() => {});
     }
     const screen = this.scenario.getScreen(user.stage);
-    if (screen.terminal) {
-      await this.showOverlay(ctx, user, 'status_complete');
-      return;
-    }
-    await this.render(ctx, user, user.stage, { pushHistory: false });
+    // Путь пройден — поздравление; иначе карточка: пакет, класс, текущий шаг
+    // и кнопка «Продолжить с этого шага» (протокол КС 07.10: раньше «Статус»
+    // молча перебрасывал на шаг, и было непонятно, что это статус).
+    await this.showOverlay(ctx, user, screen.terminal ? 'status_complete' : 'status_card');
+  }
+
+  // /reset — только в тестовом боте (ALLOW_RESET=1 в .env): стереть прогресс
+  // и начать заново, без ручного удаления чата и правок базы.
+  async reset(ctx: Context, tgId: bigint): Promise<void> {
+    await this.prisma.user.deleteMany({ where: { tgId } });
+    await this.start(ctx, tgId);
   }
 
   // Возврат из оверлея ("← Назад", "Да, к текущему шагу" на stale, "Статус
@@ -155,9 +188,18 @@ export class EngineService {
 
   async handleCallback(ctx: Context, tgId: bigint, raw: string): Promise<void> {
     const decoded = decodeCallback(raw);
-    const user = await this.getOrCreateUser(tgId);
-
     if (!decoded) return;
+    // «✓ ваш ответ» на прошлом сообщении — просто подпись, нажатие ничего не делает.
+    if (decoded.data === '__done') return;
+
+    // Родителя нет в базе (новый или его данные стёрли), а нажата кнопка
+    // старого сообщения — начинаем с приветствия, без «этот шаг вы уже прошли»
+    // (протокол КС 07.10: так выглядело как сбой).
+    if (!(await this.prisma.user.findUnique({ where: { tgId } }))) {
+      await this.start(ctx, tgId);
+      return;
+    }
+    const user = await this.getOrCreateUser(tgId);
 
     // Кнопка оверлея (меню/КС/stale/...) кодирует свой ключ вместо screen_id —
     // она не привязана к user.stage и НАМЕРЕННО обходит проверку версии/
@@ -262,7 +304,7 @@ export class EngineService {
       });
     }
 
-    await this.dispatch(ctx, user, button.next!);
+    await this.dispatch(ctx, user, button.next!, undefined, button.label);
   }
 
   // «← Назад»: screen.back, если он задан в сценарии, иначе прошлый экран
@@ -286,7 +328,14 @@ export class EngineService {
     return undefined;
   }
 
-  private async dispatch(ctx: Context, user: User, target: string, overlayBackTarget?: 'menu'): Promise<void> {
+  // answeredLabel — подпись нажатой кнопки: останется на прошлом сообщении «✓ …».
+  private async dispatch(
+    ctx: Context,
+    user: User,
+    target: string,
+    overlayBackTarget?: 'menu',
+    answeredLabel?: string,
+  ): Promise<void> {
     if (target === 'current_screen') {
       await this.render(ctx, user, user.stage, { pushHistory: false });
       return;
@@ -299,8 +348,12 @@ export class EngineService {
       await this.wipeUser(ctx, user);
       return;
     }
+    if (target === 'dates') {
+      await this.showDates(ctx, user, overlayBackTarget);
+      return;
+    }
     if (target === 'wait') {
-      await this.acknowledgeAndWait(ctx, user);
+      await this.acknowledgeAndWait(ctx, user, answeredLabel);
       return;
     }
     if (target === 'previous') {
@@ -308,23 +361,27 @@ export class EngineService {
       // напоминанием поверх любого шага, и вернуться нужно именно на него.
       const prev = user.historyStack[user.historyStack.length - 1];
       if (!prev) return;
-      await this.render(ctx, { ...user, historyStack: user.historyStack.slice(0, -1) }, prev, { pushHistory: false });
+      await this.render(ctx, { ...user, historyStack: user.historyStack.slice(0, -1) }, prev, { pushHistory: false, answeredLabel });
       return;
     }
     if (isSystemKey(target)) {
       await this.showOverlay(ctx, user, target, overlayBackTarget);
       return;
     }
-    await this.render(ctx, user, target, { pushHistory: true });
+    await this.render(ctx, user, target, { pushHistory: true, answeredLabel });
   }
 
   // «Понятно» на экране-ожидании (next: wait): родитель остаётся на месте,
   // дальше бот напишет сам по дате. С сообщения убираем кнопки ответа —
   // видно, что нажатие принято, и повторно нажимать нечего. «← Назад» и
   // «☰ Меню» остаются: из ожидания должно быть куда выйти.
-  private async acknowledgeAndWait(ctx: Context, user: User): Promise<void> {
+  private async acknowledgeAndWait(ctx: Context, user: User, answeredLabel?: string): Promise<void> {
     const screen = this.scenario.getScreen(user.stage);
-    const kb = buildScreenKeyboard({ ...screen, buttons: undefined }, user.renderVersion, {
+    // Вместо кнопок ответа — одна неактивная «✓ Понятно»: видно, что выбрано.
+    const answered = answeredLabel
+      ? [{ label: this.scenario.ui.answeredPrefix + answeredLabel, data: '__done' }]
+      : undefined;
+    const kb = buildScreenKeyboard({ ...screen, buttons: answered }, user.renderVersion, {
       backTarget: screen.back ?? user.historyStack[user.historyStack.length - 1],
       urlVars: this.renderer.urlVars(user),
     });
