@@ -99,7 +99,9 @@ export class RemindersService {
     const onTop = current?.buttons?.some((b) => b.next === 'previous') ?? false;
     const underlying = onTop ? user.historyStack[user.historyStack.length - 1] : undefined;
     const inZone = waitingScreens.includes(user.stage) || (underlying != null && waitingScreens.includes(underlying));
-    if (!inZone || wrongClass) {
+    // Отложенный этап 1: важен не экран, а то, вернулся ли родитель к платформе.
+    const relevant = reminder.ifDeferred ? user.deferredStage1 : inZone;
+    if (!relevant || wrongClass) {
       await this.finish(job, 'cancelled');
       return;
     }

@@ -239,6 +239,7 @@ screens:
         url: https://t.me/CPSOCLASS_bot
       - label: Я разберусь позже
         data: kb1_2a.later
+        defer: true
         next: kb3_0
     menu: true
   - id: kb1_3
@@ -452,6 +453,14 @@ screens:
         next: kb3_0
     menu: true
   - id: kb3_0
+    # Спека, относительные триггеры: этап 2 — день 3 и день 7, пока документы
+    # не отправлены; отложенный этап 1 — +3 дня, пока родитель не вернулся к платформе.
+    reminders:
+      waitingScreens: [kb3_0, kb3_1, kb3_1_spam, kb3_1_kc, kb3_2, kb3_2a, kb3_2a_missing, kb3_2a_list, kb3_2a_where, kb3_2a_time, kb3_2_r, kb3_2_d3, kb3_2_d7]
+      schedule:
+        - { afterHours: 72, screen: kb3_2_d3 }
+        - { afterHours: 168, screen: kb3_2_d7 }
+        - { afterHours: 72, screen: kb1_return, ifDeferred: true }
     stage: kcl_enrollment
     stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
     image: shots/e2-0-two-archways.jpg
@@ -642,10 +651,10 @@ screens:
     buttons:
       - label: Напомнить завтра
         data: kb3_2a_time.tomorrow
-        next: kb3_2
+        next: kb3_2_t1
       - label: Через 3 дня
         data: kb3_2a_time.in3days
-        next: kb3_2
+        next: kb3_2_t3
   - id: kb3_3
     stage: kcl_enrollment
     stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
@@ -755,10 +764,10 @@ screens:
     buttons:
       - label: Напомнить завтра
         data: kb3_4_wait.tomorrow
-        next: kb3_4
+        next: kb3_4_t1
       - label: Через 3 дня
         data: kb3_4_wait.in3days
-        next: kb3_4
+        next: kb3_4_t3
   - id: kb3_5
     stage: kcl_enrollment
     stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
@@ -1032,3 +1041,157 @@ screens:
       • «Завершить класс» — до <b>31 мая 2027</b>
       • Справка с оценками — после завершения класса
       • Продление со скидкой — до <b>31 мая 2027</b>
+
+  # ─────────── Напоминания по просьбе родителя и на этапах 1–2 (12.10.2026) ───────────
+  - id: kb3_2_t1
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню завтра. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - kb3_2_t1
+      schedule:
+        - afterHours: 24
+          screen: kb3_2_r
+    buttons:
+      - label: Уже отправил
+        data: kb3_2_t1.done
+        next: kb3_2_sent
+    menu: true
+  - id: kb3_2_t3
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню через 3 дня. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - kb3_2_t3
+      schedule:
+        - afterHours: 72
+          screen: kb3_2_r
+    buttons:
+      - label: Уже отправил
+        data: kb3_2_t3.done
+        next: kb3_2_sent
+    menu: true
+  - id: kb3_2_r
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      Как и договаривались, напоминаю про документы для зачисления.
+  
+      <b>Уже отправили?</b>
+    buttons:
+      - label: Да, отправил
+        data: kb3_2_r.yes
+        next: kb3_2_sent
+      - label: Ещё нет
+        data: kb3_2_r.no
+        next: kb3_2a
+    menu: true
+  - id: kb3_2_d3
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      Загляну узнать, как дела с зачислением.
+  
+      Документы по списку из письма <b>уже отправили?</b>
+    buttons:
+      - label: Да, отправил
+        data: kb3_2_d3.yes
+        next: kb3_2_sent
+      - label: Ещё нет
+        data: kb3_2_d3.no
+        next: kb3_2a
+    menu: true
+  - id: kb3_2_d7
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      Прошла неделя с начала зачисления. Чем раньше документы уйдут в школу, тем раньше откроется путь дальше.
+  
+      Если что-то мешает — подскажу. <b>Уже отправили?</b>
+    buttons:
+      - label: Да, отправил
+        data: kb3_2_d7.yes
+        next: kb3_2_sent
+      - label: Ещё нет
+        data: kb3_2_d7.no
+        next: kb3_2a
+    menu: true
+  - id: kb3_4_t1
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню завтра. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - kb3_4_t1
+      schedule:
+        - afterHours: 24
+          screen: kb3_4_r
+    buttons:
+      - label: Уже направил
+        data: kb3_4_t1.done
+        next: kb3_5
+    menu: true
+  - id: kb3_4_t3
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню через 3 дня. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - kb3_4_t3
+      schedule:
+        - afterHours: 72
+          screen: kb3_4_r
+    buttons:
+      - label: Уже направил
+        data: kb3_4_t3.done
+        next: kb3_5
+    menu: true
+  - id: kb3_4_r
+    stage: kcl_enrollment
+    stepLabel: <b>Шаг 3 из 7 · Зачисление в школу</b>
+    image: shots/e2-4-glowing-quill.jpg
+    text: |-
+      Как и договаривались, напоминаю: осталось подписать документы от школы и отправить их через кнопку из письма.
+  
+      <b>Уже направили?</b>
+    buttons:
+      - label: Направил
+        data: kb3_4_r.yes
+        next: kb3_5
+      - label: Ещё нет
+        data: kb3_4_r.no
+        next: kb3_4_wait
+    menu: true
+  - id: kb1_return
+    stage: kcl_access
+    stepLabel: <b>Шаг 1 из 7 · Доступ к платформе</b>
+    image: shots/e1-1-key-at-gate.jpg
+    text: |-
+      Вы собирались зайти на платформу позже — давайте вернёмся к этому шагу.
+  
+      Это займёт несколько минут, я подскажу, куда нажимать.
+    buttons:
+      - label: Вернуться к платформе
+        data: kb1_return.go
+        next: resume
+      - label: Уже всё в порядке
+        data: kb1_return.ok
+        next: previous
+    menu: true

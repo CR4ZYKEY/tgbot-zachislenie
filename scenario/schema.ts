@@ -22,7 +22,7 @@ import { z } from 'zod';
 //   (продление со скидкой): ответили — и обратно к своему шагу.
 // - dates           — «Важные сроки»: экран из packageVars.datesScreen по пакету
 //   родителя (dates_none, пока пакет не выбран), показывается как оверлей.
-export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait', 'previous', 'dates'] as const;
+export const SPECIAL_TARGETS = ['current_screen', 'status', 'defer_to_stage2', 'wait', 'previous', 'dates', 'resume'] as const;
 
 // Обязательные системные экраны — не часть карты пути, но текст в них
 // показывается родителю, поэтому по правилу 1 CLAUDE.md тоже живёт в YAML.
@@ -62,6 +62,10 @@ export const ButtonSchema = z
     // файла на диске, поэтому называть его по-русски и по-человечески.
     // Без next родитель остаётся на том же экране.
     document: z.string().min(1).optional(),
+    // Кнопка откладывает этап 1 так же, как deferButton: запоминает, где
+    // родитель остановился, — через 3 дня напоминание вернёт его туда
+    // (next: resume). Для «Я разберусь позже» на проблемах со входом.
+    defer: z.boolean().optional(),
   })
   .refine((b) => Boolean(b.url) !== Boolean(b.data), {
     message: 'кнопка должна быть либо callback (data), либо ссылкой (url) — не оба и не ни одного',
@@ -125,6 +129,10 @@ export const ReminderSchema = z
     // — например, «Уже продлили»: напоминание о продлении больше не нужно,
     // хотя сам шаг, на котором родитель стоит, от этого не меняется.
     skipIfAnswered: z.array(z.string().regex(idRegex)).min(1).optional(),
+    // Только если родитель отложил этап 1 («Зайду на платформу позже») и ещё
+    // не вернулся к нему кнопкой next: resume. Зона ожидания тогда не важна:
+    // где бы он ни был, незаконченный доступ к платформе остаётся.
+    ifDeferred: z.boolean().optional(),
     // Какой экран показать. Каждое напоминание — свой экран со своим текстом:
     // повторять слово в слово нельзя, иначе выглядит как сбой рассылки.
     screen: z.string().regex(idRegex),

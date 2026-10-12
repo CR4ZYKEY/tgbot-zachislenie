@@ -117,7 +117,7 @@ screens:
       поможет разобраться.
     buttons:
       - { label: "Написать куратору выпускников", url: "https://t.me/giahssc_bot" }
-      - { label: "Я разберусь позже", data: bg1_2a.later, next: bg2_0 }
+      - { label: "Я разберусь позже", data: bg1_2a.later, defer: true, next: bg2_0 }
     menu: true
 
   - id: bg1_3
@@ -242,6 +242,14 @@ screens:
 
 
   - id: bg2_0
+    # Спека, относительные триггеры: этап 2 — день 3 и день 7, пока документы
+    # не отправлены; отложенный этап 1 — +3 дня, пока родитель не вернулся к платформе.
+    reminders:
+      waitingScreens: [bg2_0, bg2_1, bg2_1_spam, bg2_1_kc, bg2_2, bg2_2a, bg2_2a_missing, bg2_2a_list, bg2_2a_where, bg2_2a_time, bg2_2_r, bg2_2_d3, bg2_2_d7]
+      schedule:
+        - { afterHours: 72, screen: bg2_2_d3 }
+        - { afterHours: 168, screen: bg2_2_d7 }
+        - { afterHours: 72, screen: bg1_return, ifDeferred: true }
     stage: bgia_enrollment
     stepLabel: "<b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>"
     image: "shots/e2-0-two-archways.jpg"
@@ -378,8 +386,8 @@ screens:
     image: "shots/e2-remind-me-later.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
-      - { label: "Напомнить завтра", data: bg2_2a_time.tomorrow, next: bg2_2 }
-      - { label: "Через 3 дня", data: bg2_2a_time.in3days, next: bg2_2 }
+      - { label: "Напомнить завтра", data: bg2_2a_time.tomorrow, next: bg2_2_t1 }
+      - { label: "Через 3 дня", data: bg2_2a_time.in3days, next: bg2_2_t3 }
 
   - id: bg2_3
     stage: bgia_enrollment
@@ -459,8 +467,8 @@ screens:
     image: "shots/e2-remind-me-later.jpg"
     text: "Хорошо, не буду торопить. Когда вам напомнить об этом?"
     buttons:
-      - { label: "Напомнить завтра", data: bg2_4_wait.tomorrow, next: bg2_4 }
-      - { label: "Через 3 дня", data: bg2_4_wait.in3days, next: bg2_4 }
+      - { label: "Напомнить завтра", data: bg2_4_wait.tomorrow, next: bg2_4_t1 }
+      - { label: "Через 3 дня", data: bg2_4_wait.in3days, next: bg2_4_t3 }
 
   - id: bg2_5
     stage: bgia_enrollment
@@ -929,3 +937,157 @@ screens:
       • {{#if grade11}}ЕГЭ{{else}}ОГЭ{{/if}} — весна–лето 2027, направление за 14 дней
       • Аттестат — лето 2027{{#if grade11}}{{else}}
       • Продление в 10 класс со скидкой — до <b>31 мая 2027</b>{{/if}}
+
+  # ─────────── Напоминания по просьбе родителя и на этапах 1–2 (12.10.2026) ───────────
+  - id: bg2_2_t1
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню завтра. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - bg2_2_t1
+      schedule:
+        - afterHours: 24
+          screen: bg2_2_r
+    buttons:
+      - label: Уже отправил
+        data: bg2_2_t1.done
+        next: bg2_2_sent
+    menu: true
+  - id: bg2_2_t3
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню через 3 дня. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - bg2_2_t3
+      schedule:
+        - afterHours: 72
+          screen: bg2_2_r
+    buttons:
+      - label: Уже отправил
+        data: bg2_2_t3.done
+        next: bg2_2_sent
+    menu: true
+  - id: bg2_2_r
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      Как и договаривались, напоминаю про документы для зачисления.
+  
+      <b>Уже отправили?</b>
+    buttons:
+      - label: Да, отправил
+        data: bg2_2_r.yes
+        next: bg2_2_sent
+      - label: Ещё нет
+        data: bg2_2_r.no
+        next: bg2_2a
+    menu: true
+  - id: bg2_2_d3
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      Загляну узнать, как дела с зачислением.
+  
+      Документы по списку из письма <b>уже отправили?</b>
+    buttons:
+      - label: Да, отправил
+        data: bg2_2_d3.yes
+        next: bg2_2_sent
+      - label: Ещё нет
+        data: bg2_2_d3.no
+        next: bg2_2a
+    menu: true
+  - id: bg2_2_d7
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    image: shots/e2-2-mail-drone.jpg
+    text: |-
+      Прошла неделя с начала зачисления. Чем раньше документы уйдут в школу, тем раньше откроется путь дальше.
+  
+      Если что-то мешает — подскажу. <b>Уже отправили?</b>
+    buttons:
+      - label: Да, отправил
+        data: bg2_2_d7.yes
+        next: bg2_2_sent
+      - label: Ещё нет
+        data: bg2_2_d7.no
+        next: bg2_2a
+    menu: true
+  - id: bg2_4_t1
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню завтра. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - bg2_4_t1
+      schedule:
+        - afterHours: 24
+          screen: bg2_4_r
+    buttons:
+      - label: Уже направил
+        data: bg2_4_t1.done
+        next: bg2_5
+    menu: true
+  - id: bg2_4_t3
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    text: |-
+      Договорились — напомню через 3 дня. 👌
+  
+      Если управитесь раньше, нажмите кнопку ниже.
+    reminders:
+      waitingScreens:
+        - bg2_4_t3
+      schedule:
+        - afterHours: 72
+          screen: bg2_4_r
+    buttons:
+      - label: Уже направил
+        data: bg2_4_t3.done
+        next: bg2_5
+    menu: true
+  - id: bg2_4_r
+    stage: bgia_enrollment
+    stepLabel: <b>Шаг 2 из {{#if grade11}}10{{else}}11{{/if}} · Зачисление в школу</b>
+    image: shots/e2-4-glowing-quill.jpg
+    text: |-
+      Как и договаривались, напоминаю: осталось подписать документы от школы и отправить их через кнопку из письма.
+  
+      <b>Уже направили?</b>
+    buttons:
+      - label: Направил
+        data: bg2_4_r.yes
+        next: bg2_5
+      - label: Ещё нет
+        data: bg2_4_r.no
+        next: bg2_4_wait
+    menu: true
+  - id: bg1_return
+    stage: bgia_access
+    stepLabel: <b>Шаг 1 из {{#if grade11}}10{{else}}11{{/if}} · Доступ к платформе</b>
+    image: shots/e1-1-key-at-gate.jpg
+    text: |-
+      Вы собирались зайти на платформу позже — давайте вернёмся к этому шагу.
+  
+      Это займёт несколько минут, я подскажу, куда нажимать.
+    buttons:
+      - label: Вернуться к платформе
+        data: bg1_return.go
+        next: resume
+      - label: Уже всё в порядке
+        data: bg1_return.ok
+        next: previous
+    menu: true

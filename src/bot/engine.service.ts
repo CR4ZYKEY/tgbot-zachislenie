@@ -391,11 +391,19 @@ export class EngineService {
       }
     }
 
-    if (screen.deferButton?.data === decoded.data) {
+    if (screen.deferButton?.data === decoded.data || button.defer) {
       await this.prisma.user.update({
         where: { id: user.id },
         data: { deferredStage1: true, resumePoint: user.stage },
       });
+    } else if (
+      user.deferredStage1 &&
+      user.resumePoint &&
+      this.scenario.hasScreen(user.resumePoint) &&
+      this.scenario.getScreen(user.resumePoint).stage === screen.stage
+    ) {
+      // Вернулся к этапу 1 сам, без напоминания, — напоминать уже не о чем.
+      await this.prisma.user.update({ where: { id: user.id }, data: { deferredStage1: false, resumePoint: null } });
     }
 
     await this.dispatch(ctx, user, button.next!, undefined, button.label);
@@ -456,6 +464,17 @@ export class EngineService {
       const prev = user.historyStack[user.historyStack.length - 1];
       if (!prev) return;
       await this.render(ctx, { ...user, historyStack: user.historyStack.slice(0, -1) }, prev, { pushHistory: false, answeredLabel });
+      return;
+    }
+    if (target === 'resume') {
+      // «Вернуться к платформе» из напоминания об отложенном этапе 1: туда,
+      // где родитель нажал «Зайду позже». Флаг снимаем — он вернулся.
+      const point = user.resumePoint && this.scenario.hasScreen(user.resumePoint) ? user.resumePoint : user.stage;
+      const updated = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { deferredStage1: false, resumePoint: null },
+      });
+      await this.render(ctx, updated, point, { pushHistory: true, answeredLabel });
       return;
     }
     if (isSystemKey(target)) {
