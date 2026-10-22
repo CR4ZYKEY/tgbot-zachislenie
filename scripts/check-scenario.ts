@@ -30,7 +30,7 @@ function main(): void {
   // с ✎), а кнопка «Получить инструкцию» без файла молча ничего бы не делала.
   const missingDocs = screens.flatMap((s) =>
     (s.buttons ?? [])
-      .filter((b) => b.document && !existsSync(resolve(__dirname, '..', 'assets', b.document)))
+      .filter((b) => b.document && !existsSync(resolve(process.cwd(), 'assets', b.document)))
       .map((b) => `Экран "${s.id}": файл кнопки "${b.data}" не найден: assets/${b.document}`),
   );
   if (missingDocs.length) {

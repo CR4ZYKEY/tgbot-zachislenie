@@ -64,7 +64,12 @@ export class BotService implements OnModuleInit, OnApplicationShutdown {
 
     // start() не резолвится, пока бот не остановлен — не await'им его тут,
     // иначе onModuleInit никогда не завершится.
-    this.bot.start().catch((err) => this.logger.error(`Long polling упал: ${err}`));
+    // Упавший polling — процесс жив, но глух. Выходим с ошибкой, чтобы
+    // хостинг (Railway, restart on failure) поднял бота заново.
+    this.bot.start().catch((err) => {
+      this.logger.error(`Long polling упал: ${err}`);
+      process.exit(1);
+    });
     this.logger.log('Бот запущен (long polling).');
   }
 
