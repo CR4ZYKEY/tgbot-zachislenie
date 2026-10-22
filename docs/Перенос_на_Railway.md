@@ -67,7 +67,7 @@ New → GitHub Repo → этот репозиторий. Сделать **два
 
 | Настройка | bot | worker |
 |---|---|---|
-| Build Command | `npm run build` | `npm run build` |
+| Build Command | `npm run scenario:check && npm run build` | `npm run scenario:check && npm run build` |
 | Pre-deploy Command | — | `npm run migrate:deploy` |
 | Start Command | `npm run start:prod` | `npm run worker:prod` |
 | Replicas | 1 | 1 |
@@ -121,3 +121,13 @@ New → GitHub Repo → этот репозиторий. Сделать **два
 - Админ-скрипты (`scripts/`) запускаются локально с `DATABASE_URL`, указывающим на Railway
   (`DATABASE_PUBLIC_URL`). `clear-sheet-rows.ts` чистит таблицу — **только при остановленном
   worker**, иначе он удалит родителей из базы.
+
+## Как вносить изменения после переноса
+
+1. Правка локально (тексты — `scenario/*.yaml`, картинки — `assets/`, код — `src/`).
+2. Проверка: `npm run scenario:check`. Прогон — только на **тестовом** боте: свой токен из
+   @BotFather в локальном `.env`, никогда не боевой (иначе локальная копия перехватит апдейты
+   у Railway).
+3. `git commit` → `git push` в `master` — Railway сам соберёт и выкатит новую версию.
+   Если сценарий с ошибкой, сборка упадёт на `scenario:check` и продолжит работать старая версия.
+4. Откат — Railway → Deployments → Redeploy предыдущей версии, или `git revert` + push.
