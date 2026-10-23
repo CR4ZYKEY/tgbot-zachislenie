@@ -5,6 +5,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "start": "node dist/src/bot/main.js",
     "build": "nest build",
     "start:dev": "ts-node --transpile-only src/bot/main.ts",
     "start:prod": "node dist/src/bot/main.js",

@@ -69,9 +69,13 @@ New → GitHub Repo → этот репозиторий. Сделать **два
 |---|---|---|
 | Build Command | `npm run scenario:check && npm run build` | `npm run scenario:check && npm run build` |
 | Pre-deploy Command | — | `npm run migrate:deploy` |
-| Start Command | `npm run start:prod` | `npm run worker:prod` |
+| Start Command | `npm start` (по умолчанию, можно не задавать) | **`npm run worker:prod`** — задать обязательно |
 | Replicas | 1 | 1 |
 | Restart Policy | On Failure | On Failure |
+
+Сборка, Replicas и Restart Policy уже заданы в `railway.json` в корне репозитория, вручную
+у сервиса нужны только Start Command (worker) и Pre-deploy Command (worker). Без Start Command
+worker запустится как бот (`npm start`) и получит `409 Conflict` с настоящим ботом.
 
 Если упал long polling, bot сам завершается с ошибкой, и Railway его перезапускает.
 
