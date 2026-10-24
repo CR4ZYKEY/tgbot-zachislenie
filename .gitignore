@@ -6,3 +6,4 @@ dist/
 *.rar
 brag-output/
 *.dump
+railway-variables.txt
