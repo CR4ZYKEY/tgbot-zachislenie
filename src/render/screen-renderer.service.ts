@@ -119,7 +119,8 @@ export class ScreenRendererService {
         renderVersion: { increment: 1 },
         historyStack: history,
         ...(changingScreen ? { phoneAttempts: 0 } : {}),
-        lastTouchAt: new Date(),
+        // Время действия самого родителя — напоминание его не двигает.
+        ...(byUser ? { lastTouchAt: new Date() } : {}),
         // Родитель ответил — цепочка молчания прервана. Напоминание, наоборот,
         // добавляет неотвеченное касание: три подряд ставят этап на паузу
         // (модель напоминаний, CLAUDE.md).

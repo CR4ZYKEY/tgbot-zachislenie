@@ -2,162 +2,161 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { google, sheets_v4 } from 'googleapis';
 import { JWT } from 'google-auth-library';
+import type { User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
+import { ScreenRendererService } from '../render/screen-renderer.service';
+import { renderTemplate, TemplateVars } from '../render/template.util';
+import type { Screen } from '../../scenario/schema';
+import { normalizePhone } from '../bot/phone.util';
 import { isFrictionAnswer } from './friction.util';
+import { checkReminder } from './reminder-check.util';
 
-// ⚠️ ВРЕМЕННО, ТОЛЬКО ДЛЯ ТЕСТОВОГО БОТА.
+// Google-таблица для сотрудников школы, обновляется раз в минуту.
+// Цель — с одного взгляда понять, кто где, у кого что не так и что делать.
 //
-// По docs/spec.md (раздел 8) выгрузка в Google Sheets должна быть
-// односторонней (БД → таблица), раз в сутки, и содержать только
-// client_code — без имени и телефона (п.5 CLAUDE.md, «персональные данные
-// не покидают БД»). Этот сервис по прямой просьбе заказчика на время
-// тестирования делает больше: двустороннюю синхронизацию всех полей,
-// с полными персональными данными в корпоративной таблице с ограниченным
-// доступом. Прежде чем переходить в прод — вернуться к разделу 8 спеки.
+// Вкладки:
+//   "Родители"   — строка на путь (герой родителя). Имя, телефон, пакет и
+//                  класс можно править — правка уходит в бота. Остальное
+//                  считает бот и перезаписывает.
+//   "Ответы"     — журнал: кто, когда, на какой вопрос бота что нажал.
+//   "Статистика" — сводка по статусам, шагам и проблемным вопросам.
+//   "Как читать" — пояснения к колонкам и цветам.
 //
-// Разрешение конфликта "кто правил последним": для каждого пользователя
-// храним sheetSyncHash — хеш бизнес-полей на момент последней синхронизации.
-//   - хеш строки в таблице совпадает с sheetSyncHash → таблицу с тех пор не
-//     трогали руками → если БД изменилась (диалог бота) — перезаписываем строку.
-//   - хеш строки в таблице НЕ совпадает → её правили руками → тянем в БД.
-// Если оба источника разошлись за один тик (человек и родитель одновременно) —
-// побеждает правка в таблице. Для тестового инструмента это приемлемо.
+// Кто правил последним: для каждого пути храним sheetSyncHash — хеш четырёх
+// редактируемых ячеек, какими бот их записал. Ячейки в таблице с другим
+// хешем правили руками — правку проверяем и применяем в БД, негодную
+// (неизвестный пакет, класс не 1–11) откатываем.
 //
-// Удаление строки в таблице = удаление пользователя (как S1a «Удалить мои
-// данные») — только для строк, которые уже были синхронизированы хотя бы раз
-// (иначе только что созданный, ещё не выгруженный пользователь удалился бы
-// на первом же тике).
+// Удалённая руками строка возвращается на следующем тике: удалить родителя
+// можно только из бота (S1a «Удалить мои данные»). Строки родителей, которых
+// в БД больше нет, бот из таблицы убирает сам.
+//
+// Тексты на вкладках — для сотрудников, а не для родителя, поэтому живут
+// здесь, а не в сценарии.
 
-type EditableFields = {
-  clientCode: string | null;
-  name: string | null;
-  phone: string | null;
-  package: string | null;
-  class: string | null;
-  isReturning: boolean | null;
-  stage: string;
-  cohortYear: number | null;
-  deferredStage1: boolean;
-  resumePoint: string | null;
-  consentAt: Date | null;
-  consecutiveMisses: number;
-  mutedStages: string[];
-};
+const STATUS = {
+  help: 'Нужна помощь',
+  silent: 'Молчит',
+  deferred: 'Отложено',
+  notStarted: 'Не начато',
+  ok: 'Идёт по плану',
+} as const;
 
-// Порядок строго соответствует столбцам A.. в таблице — см. HEADER ниже.
-const HEADER = [
-  'id (не редактировать)',
-  'tgId',
-  'clientCode',
-  'name',
-  'phone',
-  'package',
-  'class',
-  'isReturning',
-  'stage',
-  'cohortYear',
-  'deferredStage1',
-  'resumePoint',
-  'consentAt',
-  'consecutiveMisses',
-  'mutedStages (через запятую)',
+// Цвет фона ячейки «Статус» — условное форматирование на вкладке.
+const STATUS_COLORS: Array<[string, string]> = [
+  [STATUS.help, '#f4c7c3'],
+  [STATUS.silent, '#fce8b2'],
+  [STATUS.deferred, '#d2e3fc'],
+  [STATUS.notStarted, '#e8eaed'],
+  [STATUS.ok, '#ceead6'],
 ];
-const SHEET_RANGE_ALL = 'A2:O';
-const SHEET_HEADER_RANGE = 'A1:O1';
-// Справочная колонка со человекочитаемой расшифровкой stage — на одну
-// колонку правее последней рабочей (O), никогда не читается синхронизацией.
-const LABEL_COLUMN = 'P';
-const LABEL_COLUMN_HEADER = 'Экран — о чём он (только для чтения, не редактировать)';
 
-// Хеш считается ОДНИМ И ТЕМ ЖЕ способом — от канонического массива строк
-// (13 бизнес-столбцов, без id/tgId), а не от JS-объекта. Иначе хеш строки
-// из таблицы (массив строк) никогда не совпадёт с хешем полей из БД
-// (объект) даже при полностью идентичных значениях — и синхронизация будет
-// гонять одни и те же данные туда-сюда на каждом тике, принимая их за
-// ручную правку.
-const BUSINESS_COLUMNS = 13;
+// Колонки "Родители". Первые EDITABLE — редактируемые, id — последней.
+const PARENTS_COLUMNS: Array<{ title: string; note: string; width: number }> = [
+  { title: 'Родитель', note: 'Имя, как родитель назвался боту. Можно исправить — уйдёт в бота.', width: 150 },
+  { title: 'Телефон', note: 'Можно исправить — уйдёт в бота.', width: 130 },
+  { title: 'Пакет', note: 'Выбирается из списка. Меняет ветку пути в боте.', width: 150 },
+  { title: 'Класс', note: 'От 1 до 11, выбирается из списка. Меняет ветку пути в боте.', width: 75 },
+  { title: 'Шаг', note: 'Шаг пути, на котором родитель сейчас. Заполняет бот.', width: 230 },
+  { title: 'Статус', note: 'Нужна помощь / Молчит / Отложено / Не начато / Идёт по плану — см. вкладку «Как читать». Заполняет бот.', width: 120 },
+  { title: 'Что происходит / что сделать', note: 'Почему такой статус и что можно сделать. Заполняет бот.', width: 380 },
+  { title: 'Последний раз в боте', note: 'Когда родитель последний раз сам нажал кнопку или написал. Напоминания бота не считаются.', width: 130 },
+  { title: 'Пришёл в бот', note: 'Дата первого /start.', width: 100 },
+  { title: 'Впервые / продлевает', note: 'Новый родитель или продлевает обучение.', width: 110 },
+  { title: 'Telegram ID', note: 'Служебное. Не трогать.', width: 110 },
+  { title: 'Герой №', note: 'Служебное: номер героя у родителя, если их несколько. Не трогать.', width: 60 },
+  { title: 'Код экрана', note: 'Служебное: экран сценария, на котором родитель. Для разработчиков. Не трогать.', width: 130 },
+  // Номер в заголовке — версия оформления: поменяли цвета или списки —
+  // увеличить, и вкладка переоформится сама.
+  { title: 'id (3)', note: 'Служебное: по нему бот узнаёт строку. Не трогать.', width: 60 },
+];
+const EDITABLE = 4;
+const COLS = PARENTS_COLUMNS.length;
+const ID_COL = COLS - 1;
+const LAST_COL = colLetter(COLS - 1);
+// Первая служебная колонка (Telegram ID) — от неё и до конца серым.
+const SERVICE_FROM = 10;
 
-function padCells(cells: string[]): string[] {
-  const out = cells.slice(0, BUSINESS_COLUMNS);
-  while (out.length < BUSINESS_COLUMNS) out.push('');
-  return out;
-}
-
-function hashCells(cells: string[]): string {
-  return createHash('sha1').update(JSON.stringify(padCells(cells))).digest('hex');
-}
-
-function toCell(v: unknown): string {
-  if (v == null) return '';
-  if (v instanceof Date) return v.toISOString();
-  if (Array.isArray(v)) return v.join(',');
-  return String(v);
-}
-
-function parseBool(v: string): boolean | null {
-  const t = v.trim().toUpperCase();
-  if (t === 'TRUE') return true;
-  if (t === 'FALSE') return false;
-  return null;
-}
-
-const ANSWERS_HEADER = ['Дата и время', 'Родитель (tg_id)', 'Экран', 'О чём экран', 'Ответ / что написал', 'Проблема?'];
+const ANSWERS_COLUMNS: Array<{ title: string; width: number }> = [
+  { title: 'Когда', width: 120 },
+  { title: 'Родитель', width: 150 },
+  { title: 'Пакет, класс', width: 170 },
+  { title: 'Шаг', width: 230 },
+  { title: 'Вопрос бота', width: 340 },
+  { title: 'Что ответил', width: 260 },
+  { title: 'Затруднение', width: 115 },
+  { title: 'Telegram ID', width: 110 },
+];
 const ANSWERS_CURSOR_KEY = 'answers_sheet';
-const STATS_SHEET_NAME_DEFAULT = 'Статистика';
 
-function formatMoscowTime(d: Date): string {
+// Меняется вместе с текстом вкладки "Как читать" — тогда она перепишется.
+const GUIDE_VERSION = 'v2';
+
+function colLetter(index: number): string {
+  return String.fromCharCode('A'.charCodeAt(0) + index);
+}
+
+function rgb(hex: string): sheets_v4.Schema$Color {
+  const n = parseInt(hex.slice(1), 16);
+  return { red: ((n >> 16) & 255) / 255, green: ((n >> 8) & 255) / 255, blue: (n & 255) / 255 };
+}
+
+function plain(html: string): string {
+  return html.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function moscowDateTime(d: Date): string {
   return d.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow', dateStyle: 'short', timeStyle: 'short' });
 }
 
-// Первая строка экрана — короткий, человекочитаемый контекст рядом с
-// техническим screen_id, чтобы не приходилось помнить, что такое
-// "e2_2a_missing". Шаблонные {{...}} и HTML-разметку (<b>...</b>) вырезаем —
-// движковую разметку читать незачем.
-function screenGist(text: string): string {
-  const firstLine = text.split('\n')[0];
-  const plain = firstLine.replace(/\{\{[^}]*\}\}/g, '').replace(/<[^>]+>/g, '').trim();
-  return plain.length > 70 ? `${plain.slice(0, 67)}...` : plain;
+function moscowDate(d: Date): string {
+  return d.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
 }
 
-// Человекочитаемая расшифровка stage-кода — только для чтения, нигде не
-// парсится обратно. Используется и в справочной колонке листа пользователей,
-// и на вкладке "Статистика". Экран мог исчезнуть из текущей версии сценария
-// (правки после того, как строка синхронизировалась) — тогда просто голый id.
-function makeScreenLabel(scenario: ScenarioService): (screenId: string) => string {
-  return (screenId: string): string => {
-    if (!screenId) return '';
-    try {
-      return `${screenId} — ${screenGist(scenario.getScreen(screenId).text)}`;
-    } catch {
-      return screenId;
-    }
-  };
+function moscowDayMonth(d: Date): string {
+  return d.toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', day: 'numeric', month: 'long' });
 }
+
+function hashEditable(cells: string[]): string {
+  return createHash('sha1').update(JSON.stringify(cells.slice(0, EDITABLE).map((c) => c ?? ''))).digest('hex');
+}
+
+function padRow(cells: string[], width: number): string[] {
+  const out = cells.slice(0, width).map((c) => c ?? '');
+  while (out.length < width) out.push('');
+  return out;
+}
+
+type LastAnswer = { screenId: string; value: string; createdAt: Date };
+type ParentRowContext = { last?: LastAnswer; nextReminder?: Date };
+type ParentRow = { user: User; row: string[] };
 
 @Injectable()
 export class SheetsSyncService implements OnModuleInit {
   private readonly logger = new Logger(SheetsSyncService.name);
   private sheets: sheets_v4.Sheets | null = null;
   private spreadsheetId = '';
-  private sheetName = 'Users';
+  private parentsSheetName = 'Родители';
   private answersSheetName = 'Ответы';
-  private statsSheetName = STATS_SHEET_NAME_DEFAULT;
+  private statsSheetName = 'Статистика';
+  private guideSheetName = 'Как читать';
   private enabled = false;
-  // Заполняется в onModuleInit, когда this.scenario уже доступен — обычной
-  // стрелочной функции с this в конструкторе тут не получится.
-  private screenLabel: (screenId: string) => string = (id) => id;
+  // Пакеты, которые бывают в сценарии, — список для ячейки «Пакет» и
+  // проверка ручной правки.
+  private packages: string[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly scenario: ScenarioService,
+    private readonly renderer: ScreenRendererService,
   ) {}
 
   onModuleInit(): void {
     this.spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID ?? '';
-    this.sheetName = process.env.GOOGLE_SHEETS_SHEET_NAME ?? 'Users';
+    this.parentsSheetName = process.env.GOOGLE_SHEETS_SHEET_NAME ?? 'Родители';
     this.answersSheetName = process.env.GOOGLE_SHEETS_ANSWERS_SHEET_NAME ?? 'Ответы';
-    this.statsSheetName = process.env.GOOGLE_SHEETS_STATS_SHEET_NAME ?? STATS_SHEET_NAME_DEFAULT;
+    this.statsSheetName = process.env.GOOGLE_SHEETS_STATS_SHEET_NAME ?? 'Статистика';
     const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
     const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
@@ -168,200 +167,540 @@ export class SheetsSyncService implements OnModuleInit {
       return;
     }
 
+    const packages = new Set<string>();
+    for (const screen of this.scenario.screens) {
+      for (const button of screen.buttons ?? []) {
+        for (const set of [button.setField ?? []].flat()) {
+          if (set.field === 'package') packages.add(set.value);
+        }
+      }
+    }
+    this.packages = [...packages];
+
     const auth = new JWT({ email: clientEmail, key: privateKey, scopes: ['https://www.googleapis.com/auth/spreadsheets'] });
     this.sheets = google.sheets({ version: 'v4', auth });
-    this.screenLabel = makeScreenLabel(this.scenario);
     this.enabled = true;
-    this.logger.log(
-      `Sheets-синхронизация включена: таблица ${this.spreadsheetId}, лист "${this.sheetName}" + лог ответов "${this.answersSheetName}"`,
-    );
+    this.logger.log(`Sheets-синхронизация включена: таблица ${this.spreadsheetId}, вкладка "${this.parentsSheetName}"`);
   }
 
   async syncOnce(): Promise<void> {
     if (!this.enabled || !this.sheets) return;
 
     try {
-      await this.ensureHeader();
-      const sheetRows = await this.readSheetRows();
-      const dbUsers = await this.prisma.user.findMany();
-
-      const sheetById = new Map(sheetRows.map((r) => [r.id, r]));
-      const dbById = new Map(dbUsers.map((u) => [u.id, u]));
-
-      // 1) Строки, которые пропали из таблицы, но были синхронизированы раньше — удаление.
-      for (const user of dbUsers) {
-        if (user.sheetSyncHash && !sheetById.has(user.id)) {
-          this.logger.log(`Строка ${user.id} (tg ${user.tgId}) удалена из таблицы вручную — удаляю пользователя из БД`);
-          await this.prisma.user.delete({ where: { id: user.id } }).catch((err) => {
-            this.logger.warn(`Не удалось удалить ${user.id}: ${err}`);
-          });
-        }
-      }
-
-      // 2) Остальные — по каждому решаем, чья версия свежее.
-      for (const user of dbUsers) {
-        const row = sheetById.get(user.id);
-        const dbFields = this.pickEditable(user);
-        const dbHash = this.hashOfEditable(dbFields);
-
-        if (!row) {
-          await this.appendRow(user.id, user.tgId.toString(), dbFields);
-          await this.prisma.user.update({ where: { id: user.id }, data: { sheetSyncHash: dbHash } });
-          continue;
-        }
-
-        if (row.hash === user.sheetSyncHash) {
-          // Таблицу с последнего раза не трогали — если БД изменилась, обновляем строку.
-          if (dbHash !== user.sheetSyncHash) {
-            await this.writeRow(row.rowNumber, user.id, user.tgId.toString(), dbFields);
-            await this.prisma.user.update({ where: { id: user.id }, data: { sheetSyncHash: dbHash } });
-          }
-          continue;
-        }
-
-        // Строку правили руками — пробуем применить в БД.
-        const parsed = this.parseRow(row);
-        if (!parsed.ok) {
-          this.logger.warn(`Строка ${user.id}: ${parsed.error} — откатываю правку, возвращаю значения из БД`);
-          await this.writeRow(row.rowNumber, user.id, user.tgId.toString(), dbFields);
-          await this.prisma.user.update({ where: { id: user.id }, data: { sheetSyncHash: dbHash } });
-          continue;
-        }
-
-        const newHash = this.hashOfEditable(parsed.fields);
-        await this.prisma.user.update({
-          where: { id: user.id },
-          data: { ...parsed.fields, sheetSyncHash: newHash },
-        });
-        // Перезаписываем строку канонической формой (нормализованные даты и т.п.).
-        await this.writeRow(row.rowNumber, user.id, user.tgId.toString(), parsed.fields);
-        this.logger.log(`Строка ${user.id} (tg ${user.tgId}) обновлена вручную из таблицы, применено в БД`);
-      }
-
-      await this.syncAnswers();
-      await this.syncStats();
+      const tabs = await this.ensureTabs();
+      const parents = await this.syncParents(tabs.get(this.parentsSheetName)!);
+      await this.syncAnswers(tabs.get(this.answersSheetName)!);
+      await this.syncStats(tabs.get(this.statsSheetName)!, parents);
+      await this.syncGuide(tabs.get(this.guideSheetName)!);
     } catch (err) {
       this.logger.error(`Ошибка синхронизации с Google Sheets: ${err instanceof Error ? err.message : err}`);
     }
   }
 
-  // Лог "Затруднений" (раздел 8 спеки) — каждый ответ/ввод родителя, уже
-  // пишется движком в answers. Здесь только выгружаем накопленное в
-  // отдельную вкладку таблицы, в человекочитаемом виде: не только
-  // screen_id, но и о чём экран, плюс отдельная колонка-флаг "Проблема?" —
-  // чтобы можно было отфильтровать/отсортировать по ней визуально, не считая
-  // руками. Односторонняя выгрузка (БД → таблица), правка руками не
-  // читается обратно — история ответов неизменяема по своей природе.
-  //
-  // Курсор — по времени (`SyncCursor`), а не по числу строк: "газ с начала"
-  // удаляет пользователей и answers в БД, но не трогает уже выгруженную
-  // историю в таблице — курсор по количеству строк из-за этого разъехался
-  // бы и синхронизация замерла бы до следующего накопления пользователей.
-  private async syncAnswers(): Promise<void> {
-    await this.ensureSheetTab(this.answersSheetName, ANSWERS_HEADER);
+  // ─────────── Вкладки ───────────
+
+  // Создаёт недостающие вкладки, возвращает их sheetId по имени.
+  private async ensureTabs(): Promise<Map<string, number>> {
+    const names = [this.parentsSheetName, this.answersSheetName, this.statsSheetName, this.guideSheetName];
+    const meta = await this.sheets!.spreadsheets.get({ spreadsheetId: this.spreadsheetId, fields: 'sheets.properties' });
+    const ids = new Map<string, number>();
+    for (const s of meta.data.sheets ?? []) {
+      if (s.properties?.title != null && s.properties.sheetId != null) ids.set(s.properties.title, s.properties.sheetId);
+    }
+    const missing = names.filter((n) => !ids.has(n));
+    if (missing.length) {
+      const created = await this.sheets!.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
+      });
+      for (const reply of created.data.replies ?? []) {
+        const p = reply.addSheet?.properties;
+        if (p?.title != null && p.sheetId != null) ids.set(p.title, p.sheetId);
+      }
+    }
+    return ids;
+  }
+
+  // Шапка не та (новая вкладка или поменялись колонки) — пишем шапку и
+  // оформление заново. Возвращает true, если вкладку пришлось переделать.
+  private async ensureHeader(name: string, sheetId: number, titles: string[], format: () => sheets_v4.Schema$Request[]): Promise<boolean> {
+    const range = `${name}!A1:${colLetter(titles.length - 1)}1`;
+    const res = await this.sheets!.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range });
+    const current = padRow(res.data.values?.[0] ?? [], titles.length);
+    if (current.every((c, i) => c === titles[i])) return false;
+
+    // Старое оформление убираем, чтобы правила не копились дублями.
+    const meta = await this.sheets!.spreadsheets.get({
+      spreadsheetId: this.spreadsheetId,
+      ranges: [name],
+      fields: 'sheets(conditionalFormats,protectedRanges(protectedRangeId),basicFilter)',
+    });
+    const sheet = meta.data.sheets?.[0];
+    const cleanup: sheets_v4.Schema$Request[] = [
+      ...(sheet?.conditionalFormats ?? []).map(() => ({ deleteConditionalFormatRule: { sheetId, index: 0 } })),
+      ...(sheet?.protectedRanges ?? []).map((p) => ({ deleteProtectedRange: { protectedRangeId: p.protectedRangeId! } })),
+      ...(sheet?.basicFilter ? [{ clearBasicFilter: { sheetId } }] : []),
+    ];
+
+    await this.sheets!.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range,
+      valueInputOption: 'RAW',
+      requestBody: { values: [titles] },
+    });
+    await this.sheets!.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          ...cleanup,
+          { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
+          {
+            repeatCell: {
+              range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+              cell: {
+                userEnteredFormat: {
+                  textFormat: { bold: true },
+                  backgroundColor: rgb('#e6ecf5'),
+                  wrapStrategy: 'WRAP',
+                  verticalAlignment: 'MIDDLE',
+                },
+              },
+              fields: 'userEnteredFormat(textFormat,backgroundColor,wrapStrategy,verticalAlignment)',
+            },
+          },
+          ...format(),
+        ],
+      },
+    });
+    return true;
+  }
+
+  private columnWidths(sheetId: number, widths: number[]): sheets_v4.Schema$Request[] {
+    return widths.map((pixelSize, i) => ({
+      updateDimensionProperties: {
+        range: { sheetId, dimension: 'COLUMNS', startIndex: i, endIndex: i + 1 },
+        properties: { pixelSize },
+        fields: 'pixelSize',
+      },
+    }));
+  }
+
+  // ─────────── Родители ───────────
+
+  private parentsFormat(sheetId: number): sheets_v4.Schema$Request[] {
+    const dataRows = { sheetId, startRowIndex: 1 };
+    const cols = (from: number, to: number) => ({ ...dataRows, startColumnIndex: from, endColumnIndex: to });
+    return [
+      { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenColumnCount: 1 } }, fields: 'gridProperties.frozenColumnCount' } },
+      ...this.columnWidths(sheetId, PARENTS_COLUMNS.map((c) => c.width)),
+      // Подсказка к каждой колонке — при наведении на заголовок.
+      ...PARENTS_COLUMNS.map((c, i) => ({
+        repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: i, endColumnIndex: i + 1 }, cell: { note: c.note }, fields: 'note' },
+      })),
+      {
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1 },
+          cell: { userEnteredFormat: { verticalAlignment: 'TOP', wrapStrategy: 'WRAP', textFormat: { bold: false } } },
+          fields: 'userEnteredFormat(verticalAlignment,wrapStrategy,textFormat)',
+        },
+      },
+      // Телефон — текстом, иначе Google превратит +7… в число.
+      { repeatCell: { range: cols(1, 2), cell: { userEnteredFormat: { numberFormat: { type: 'TEXT' } } }, fields: 'userEnteredFormat.numberFormat' } },
+      // Что заполняет бот — на сером фоне, служебное — ещё и серым шрифтом.
+      { repeatCell: { range: cols(EDITABLE, COLS), cell: { userEnteredFormat: { backgroundColor: rgb('#f8f9fa') } }, fields: 'userEnteredFormat.backgroundColor' } },
+      {
+        repeatCell: {
+          range: cols(SERVICE_FROM, COLS),
+          cell: { userEnteredFormat: { textFormat: { foregroundColor: rgb('#9aa0a6'), fontSize: 9 } } },
+          fields: 'userEnteredFormat.textFormat',
+        },
+      },
+      { updateDimensionProperties: { range: { sheetId, dimension: 'COLUMNS', startIndex: ID_COL, endIndex: ID_COL + 1 }, properties: { hiddenByUser: true }, fields: 'hiddenByUser' } },
+      {
+        setDataValidation: {
+          range: cols(2, 3),
+          rule: { condition: { type: 'ONE_OF_LIST', values: this.packages.map((userEnteredValue) => ({ userEnteredValue })) }, showCustomUi: true, strict: true },
+        },
+      },
+      {
+        setDataValidation: {
+          range: cols(3, 4),
+          rule: {
+            condition: { type: 'ONE_OF_LIST', values: Array.from({ length: 11 }, (_, i) => ({ userEnteredValue: String(i + 1) })) },
+            showCustomUi: true,
+            strict: true,
+          },
+        },
+      },
+      ...STATUS_COLORS.map(([text, hex]) => ({
+        addConditionalFormatRule: {
+          rule: {
+            ranges: [cols(5, 6)],
+            booleanRule: { condition: { type: 'TEXT_EQ', values: [{ userEnteredValue: text }] }, format: { backgroundColor: rgb(hex), textFormat: { bold: true } } },
+          },
+          index: 0,
+        },
+      })),
+      // Правка колонок бота — с предупреждением: всё равно перезапишется.
+      {
+        addProtectedRange: {
+          protectedRange: {
+            range: cols(EDITABLE, COLS),
+            description: 'Заполняет бот — ручные правки перезапишутся через минуту',
+            warningOnly: true,
+          },
+        },
+      },
+      { setBasicFilter: { filter: { range: { sheetId, startRowIndex: 0, startColumnIndex: 0, endColumnIndex: COLS } } } },
+    ];
+  }
+
+  // Возвращает строки всех путей — из них же считается "Статистика".
+  private async syncParents(sheetId: number): Promise<ParentRow[]> {
+    const name = this.parentsSheetName;
+    await this.ensureHeader(name, sheetId, PARENTS_COLUMNS.map((c) => c.title), () => this.parentsFormat(sheetId));
+
+    const res = await this.sheets!.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: `${name}!A2:${LAST_COL}` });
+    const sheetRows = (res.data.values ?? [])
+      .map((cells, i) => ({ rowNumber: i + 2, cells: padRow(cells.map(String), COLS) }))
+      .filter((r) => r.cells[ID_COL].trim());
+
+    const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+    const userIds = new Set(users.map((u) => u.id));
+    const lastAnswers = await this.lastAnswers();
+    const nextReminders = await this.nextReminders(users);
+
+    // Дубль строки (скопировали) и строки удалённых родителей — убираем.
+    const byId = new Map<string, (typeof sheetRows)[number]>();
+    const toDelete: number[] = [];
+    for (const row of sheetRows) {
+      const id = row.cells[ID_COL].trim();
+      if (!userIds.has(id) || byId.has(id)) toDelete.push(row.rowNumber);
+      else byId.set(id, row);
+    }
+
+    const updates: sheets_v4.Schema$ValueRange[] = [];
+    const appends: string[][] = [];
+    const result: ParentRow[] = [];
+
+    for (let user of users) {
+      const row = byId.get(user.id);
+
+      if (row && user.sheetSyncHash && hashEditable(row.cells) !== user.sheetSyncHash) {
+        const parsed = this.parseEditable(row.cells);
+        if (parsed.ok) {
+          user = await this.prisma.user.update({ where: { id: user.id }, data: parsed.fields });
+          this.logger.log(`Строка родителя ${user.id} (tg ${user.tgId}) исправлена в таблице — применено в боте`);
+        } else {
+          this.logger.warn(`Строка родителя ${user.id}: ${parsed.error} — возвращаю прежнее значение`);
+        }
+      }
+
+      const desired = this.parentRow(user, { last: lastAnswers.get(user.id), nextReminder: nextReminders.get(user.id) });
+      result.push({ user, row: desired });
+      if (!row) {
+        if (user.sheetSyncHash) this.logger.log(`Строку родителя ${user.id} удалили из таблицы — возвращаю`);
+        appends.push(desired);
+      } else if (row.cells.some((c, i) => c !== desired[i])) {
+        updates.push({ range: `${name}!A${row.rowNumber}:${LAST_COL}${row.rowNumber}`, values: [desired] });
+      }
+
+      const hash = hashEditable(desired);
+      if (hash !== user.sheetSyncHash) {
+        await this.prisma.user.update({ where: { id: user.id }, data: { sheetSyncHash: hash } });
+      }
+    }
+
+    // Порядок важен: сначала правки по номерам строк, потом удаление снизу
+    // вверх (номера выше не сдвигаются), потом новые строки в конец.
+    if (updates.length) {
+      await this.sheets!.spreadsheets.values.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: { valueInputOption: 'RAW', data: updates },
+      });
+    }
+    if (toDelete.length) {
+      await this.sheets!.spreadsheets.batchUpdate({
+        spreadsheetId: this.spreadsheetId,
+        requestBody: {
+          requests: [...toDelete]
+            .sort((a, b) => b - a)
+            .map((rowNumber) => ({ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex: rowNumber - 1, endIndex: rowNumber } } })),
+        },
+      });
+    }
+    if (appends.length) {
+      await this.sheets!.spreadsheets.values.append({
+        spreadsheetId: this.spreadsheetId,
+        range: `${name}!A:${LAST_COL}`,
+        // Не INSERT_ROWS: вставленные строки берут оформление шапки, а не
+        // колонок (телефон текстом, серый фон колонок бота).
+        valueInputOption: 'RAW',
+        requestBody: { values: appends },
+      });
+    }
+    return result;
+  }
+
+  private parentRow(user: User, ctx: ParentRowContext): string[] {
+    const vars = this.renderer.buildVars(user);
+    const screen = this.scenario.hasScreen(user.stage) ? this.scenario.getScreen(user.stage) : undefined;
+    const { status, why } = this.status(user, screen, vars, ctx);
+    const lastSeen = user.lastTouchAt ?? ctx.last?.createdAt;
+    return [
+      user.name ?? '',
+      user.phone ?? '',
+      user.package ?? '',
+      user.class ?? '',
+      this.stepName(screen, vars),
+      status,
+      why,
+      lastSeen ? moscowDateTime(lastSeen) : '',
+      moscowDate(user.createdAt),
+      user.isReturning == null ? '' : user.isReturning ? 'Продлевает' : 'Впервые',
+      user.tgId.toString(),
+      String(user.slot),
+      user.stage,
+      user.id,
+    ];
+  }
+
+  private status(user: User, screen: Screen | undefined, vars: TemplateVars, ctx: ParentRowContext): { status: string; why: string } {
+    const remind = ctx.nextReminder ? `бот напомнит ${moscowDayMonth(ctx.nextReminder)}` : '';
+
+    if (ctx.last && isFrictionAnswer(ctx.last.value)) {
+      const label = this.answerLabel(ctx.last.screenId, ctx.last.value, vars);
+      return { status: STATUS.help, why: `Ответ «${label}» — ${moscowDateTime(ctx.last.createdAt)}. Стоит связаться и помочь.` };
+    }
+    if ((screen && user.mutedStages.includes(screen.stage)) || user.consecutiveMisses >= 3) {
+      return { status: STATUS.silent, why: 'Нет ответа на 3 напоминания подряд — бот больше не напоминает про этот шаг. Стоит связаться.' };
+    }
+    if (user.deferredStage1) {
+      const resume = user.resumePoint && this.scenario.hasScreen(user.resumePoint) ? this.scenario.getScreen(user.resumePoint) : undefined;
+      const what = resume ? `«${this.stepName(resume, vars)}»` : 'первый шаг';
+      return { status: STATUS.deferred, why: `Родитель отложил ${what}${remind ? `, ${remind}` : ''}.` };
+    }
+    if (!user.package || screen?.stage === 'start') {
+      return { status: STATUS.notStarted, why: 'Знакомство с ботом: пакет и класс ещё не выбраны.' };
+    }
+    // Экран ожидания («загляну через неделю») — не вопрос, тогда только дата напоминания.
+    const question = screen ? this.question(screen, vars, true) : '';
+    const parts = [question ? `Бот спрашивает: «${question}»` : '', remind ? `${remind[0].toUpperCase()}${remind.slice(1)}` : ''];
+    return { status: STATUS.ok, why: parts.filter(Boolean).join('. ') + (parts.some(Boolean) ? '.' : '') };
+  }
+
+  private parseEditable(cells: string[]): { ok: true; fields: Pick<User, 'name' | 'phone' | 'package' | 'class'> } | { ok: false; error: string } {
+    const [name, phoneRaw, pkg, cls] = cells.slice(0, EDITABLE).map((c) => c.trim());
+    if (pkg && !this.packages.includes(pkg)) return { ok: false, error: `неизвестный пакет "${pkg}"` };
+    if (cls && !/^([1-9]|1[01])$/.test(cls)) return { ok: false, error: `класс "${cls}" не от 1 до 11` };
+    // Тот же формат, что у телефона из бота: +7XXXXXXXXXX.
+    const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+    if (phoneRaw && !phone) return { ok: false, error: `телефон "${phoneRaw}" не похож на номер` };
+    return { ok: true, fields: { name: name || null, phone, package: pkg || null, class: cls || null } };
+  }
+
+  // Последний ответ каждого родителя — одним запросом, без выгрузки всех ответов.
+  private async lastAnswers(): Promise<Map<string, LastAnswer>> {
+    const rows = await this.prisma.$queryRaw<Array<LastAnswer & { userId: string }>>`
+      SELECT DISTINCT ON ("userId") "userId", "screenId", "value", "createdAt"
+      FROM answers
+      ORDER BY "userId", "createdAt" DESC`;
+    return new Map(rows.map((r) => [r.userId, r]));
+  }
+
+  // Ближайшее напоминание, которое правда придёт: устаревшие задачи в очереди
+  // (родитель ушёл с экрана) воркер снимет при наступлении срока.
+  private async nextReminders(users: User[]): Promise<Map<string, Date>> {
+    const byId = new Map(users.map((u) => [u.id, u]));
+    const jobs = await this.prisma.job.findMany({
+      where: { status: 'pending' },
+      select: { userId: true, jobType: true, runAt: true },
+      orderBy: { runAt: 'asc' },
+    });
+    const next = new Map<string, Date>();
+    for (const job of jobs) {
+      const user = byId.get(job.userId);
+      if (!user || next.has(job.userId)) continue;
+      const check = checkReminder(this.scenario, user, job.jobType);
+      if (check.ok && !user.mutedStages.includes(check.stage)) next.set(job.userId, job.runAt);
+    }
+    return next;
+  }
+
+  // ─────────── Тексты из сценария ───────────
+
+  // «Шаг 3 из 8 · Открепление». У стартовых экранов шага нет.
+  private stepName(screen: Screen | undefined, vars: TemplateVars): string {
+    if (!screen) return '';
+    if (screen.stepLabel) return plain(renderTemplate(screen.stepLabel, vars));
+    return screen.stage === 'start' ? 'Знакомство с ботом' : '';
+  }
+
+  // Вопрос экрана — последняя жирная фраза с «?», иначе (если не onlyQuestion)
+  // первая строка текста.
+  private question(screen: Screen, vars: TemplateVars, onlyQuestion = false): string {
+    const text = renderTemplate(screen.text ?? '', vars);
+    const bold = [...text.matchAll(/<b>([^<]*\?)\s*<\/b>/g)].map((m) => plain(m[1]));
+    if (!bold.length && onlyQuestion) return '';
+    const q = bold.length ? bold[bold.length - 1] : plain(text.split('\n')[0]);
+    return q.length > 120 ? `${q.slice(0, 117)}...` : q;
+  }
+
+  // Подпись нажатой кнопки вместо кода; свободный ввод — как есть.
+  private answerLabel(screenId: string, value: string, vars: TemplateVars): string {
+    if (!this.scenario.hasScreen(screenId)) return value;
+    const screen = this.scenario.getScreen(screenId);
+    const button = [...(screen.buttons ?? []), screen.deferButton, screen.input?.skipButton].find((b) => b?.data === value);
+    return button ? plain(renderTemplate(button.label, vars)) : value;
+  }
+
+  // ─────────── Ответы ───────────
+
+  private answersFormat(sheetId: number): sheets_v4.Schema$Request[] {
+    return [
+      ...this.columnWidths(sheetId, ANSWERS_COLUMNS.map((c) => c.width)),
+      {
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1 },
+          cell: { userEnteredFormat: { verticalAlignment: 'TOP', wrapStrategy: 'WRAP', textFormat: { bold: false }, backgroundColor: rgb('#ffffff') } },
+          fields: 'userEnteredFormat(verticalAlignment,wrapStrategy,textFormat,backgroundColor)',
+        },
+      },
+      {
+        repeatCell: {
+          range: { sheetId, startRowIndex: 1, startColumnIndex: 7, endColumnIndex: 8 },
+          cell: { userEnteredFormat: { textFormat: { foregroundColor: rgb('#9aa0a6'), fontSize: 9 } } },
+          fields: 'userEnteredFormat.textFormat',
+        },
+      },
+      {
+        addConditionalFormatRule: {
+          rule: {
+            ranges: [{ sheetId, startRowIndex: 1, startColumnIndex: 0, endColumnIndex: ANSWERS_COLUMNS.length }],
+            booleanRule: { condition: { type: 'CUSTOM_FORMULA', values: [{ userEnteredValue: '=$G2="да"' }] }, format: { backgroundColor: rgb('#fce8e6') } },
+          },
+          index: 0,
+        },
+      },
+      { setBasicFilter: { filter: { range: { sheetId, startRowIndex: 0, startColumnIndex: 0, endColumnIndex: ANSWERS_COLUMNS.length } } } },
+    ];
+  }
+
+  // Журнал ответов — только дописывается (БД → таблица), ручные правки не
+  // читаются: история неизменяема. Курсор — по времени последнего выгруженного
+  // ответа, а не по числу строк: "газ с начала" удаляет ответы в БД, и курсор
+  // по количеству строк разъехался бы.
+  private async syncAnswers(sheetId: number): Promise<void> {
+    const name = this.answersSheetName;
+    const remade = await this.ensureHeader(name, sheetId, ANSWERS_COLUMNS.map((c) => c.title), () => this.answersFormat(sheetId));
+    if (remade) {
+      // Колонки поменялись — старые строки в другом формате, выгружаем журнал заново.
+      await this.sheets!.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: `${name}!A2:Z` });
+      await this.prisma.syncCursor.deleteMany({ where: { key: ANSWERS_CURSOR_KEY } });
+    }
 
     const cursor = await this.prisma.syncCursor.findUnique({ where: { key: ANSWERS_CURSOR_KEY } });
     const since = cursor ? new Date(cursor.value) : new Date(0);
-
-    const newAnswers = await this.prisma.answer.findMany({
+    const answers = await this.prisma.answer.findMany({
       where: { createdAt: { gt: since } },
       orderBy: { createdAt: 'asc' },
-      include: { user: { select: { tgId: true } } },
+      take: 2000,
+      include: { user: true },
     });
+    if (!answers.length) return;
 
-    if (newAnswers.length === 0) return;
-
-    const rows = newAnswers.map((a) => {
-      let gist = '';
-      try {
-        gist = screenGist(this.scenario.getScreen(a.screenId).text);
-      } catch {
-        // Экран мог исчезнуть из текущей версии сценария — не критично, просто без описания.
-      }
+    const rows = answers.map((a) => {
+      const vars = this.renderer.buildVars(a.user);
+      const screen = this.scenario.hasScreen(a.screenId) ? this.scenario.getScreen(a.screenId) : undefined;
       return [
-        formatMoscowTime(a.createdAt),
-        a.user.tgId.toString(),
-        a.screenId,
-        gist,
-        a.value,
+        moscowDateTime(a.createdAt),
+        a.user.name ?? '',
+        [a.user.package, a.user.class ? `${a.user.class} класс` : ''].filter(Boolean).join(', '),
+        this.stepName(screen, vars),
+        screen ? this.question(screen, vars) : a.screenId,
+        this.answerLabel(a.screenId, a.value, vars),
         isFrictionAnswer(a.value) ? 'да' : '',
+        a.user.tgId.toString(),
       ];
     });
 
     await this.sheets!.spreadsheets.values.append({
       spreadsheetId: this.spreadsheetId,
-      range: `${this.answersSheetName}!A:F`,
+      range: `${name}!A:${colLetter(ANSWERS_COLUMNS.length - 1)}`,
       valueInputOption: 'RAW',
       requestBody: { values: rows },
     });
 
-    const lastCreatedAt = newAnswers[newAnswers.length - 1].createdAt.toISOString();
+    const last = answers[answers.length - 1].createdAt.toISOString();
     await this.prisma.syncCursor.upsert({
       where: { key: ANSWERS_CURSOR_KEY },
-      create: { key: ANSWERS_CURSOR_KEY, value: lastCreatedAt },
-      update: { value: lastCreatedAt },
+      create: { key: ANSWERS_CURSOR_KEY, value: last },
+      update: { value: last },
     });
   }
 
-  // Сводка "где чаще всего тормозят" прямо в таблице — раньше это было видно
-  // только через `npm run stats` в консоли. Вкладка целиком перезаписывается
-  // на каждом тике (это производный отчёт, не место для ручных правок).
-  private async syncStats(): Promise<void> {
-    const sheetId = await this.ensureSheetTab(this.statsSheetName, ['Статистика по боту — обновляется автоматически']);
+  // ─────────── Статистика ───────────
 
-    const totalUsers = await this.prisma.user.count();
-    const byStage = await this.prisma.user.groupBy({ by: ['stage'], _count: { _all: true } });
-    const answers = await this.prisma.answer.findMany({ select: { screenId: true, value: true } });
+  // Производный отчёт: вкладка целиком перезаписывается каждый тик. Всё
+  // считает база (group by) — сколько бы ни накопилось ответов, в память
+  // приходят сотни строк, а не все ответы.
+  private async syncStats(sheetId: number, parents: ParentRow[]): Promise<void> {
+    const byAnswer = await this.prisma.answer.groupBy({ by: ['screenId', 'value'], _count: { _all: true } });
 
-    const traffic = new Map<string, number>();
-    const friction = new Map<string, { total: number; friction: number }>();
-    for (const a of answers) {
-      traffic.set(a.screenId, (traffic.get(a.screenId) ?? 0) + 1);
-      const f = friction.get(a.screenId) ?? { total: 0, friction: 0 };
-      f.total += 1;
-      if (isFrictionAnswer(a.value)) f.friction += 1;
-      friction.set(a.screenId, f);
+    const statusCount = new Map<string, number>(STATUS_COLORS.map(([s]) => [s, 0]));
+    const byStep = new Map<string, number>();
+    for (const { user, row } of parents) {
+      const status = row[5];
+      statusCount.set(status, (statusCount.get(status) ?? 0) + 1);
+      const pkg = [user.package ?? 'Пакет не выбран', user.class ? `${user.class} класс` : ''].filter(Boolean).join(', ');
+      const key = `${pkg}\u0000${row[4] || user.stage}`;
+      byStep.set(key, (byStep.get(key) ?? 0) + 1);
     }
 
-    // Колонка A везде — короткий screen_id: это и есть подпись графика, длинную
-    // расшифровку туда сажать нельзя (подписи под столбцами станут нечитаемы).
-    // Описание — отдельной колонкой B, для человека, не для графика.
-    const rows: string[][] = [
-      [`Обновлено: ${formatMoscowTime(new Date())}`],
-      [''],
-      [`1. Где сейчас стоят родители (всего: ${totalUsers})`],
-      ['Экран', 'Описание', 'Сейчас на нём', '% от всех'],
-    ];
-    const sortedByStage = [...byStage].sort((a, b) => b._count._all - a._count._all);
-    // Диапазон нужен графику ниже — считаем его тут же, а не пересчитываем
-    // вручную по номерам строк (сдвинулись бы при любой правке текста выше).
-    const byStageStartRow = rows.length; // 0-индексация Sheets API
-    for (const r of sortedByStage) {
-      rows.push([r.stage, this.screenLabel(r.stage), String(r._count._all), totalUsers ? `${Math.round((r._count._all / totalUsers) * 100)}%` : '0%']);
+    const questions = new Map<string, { total: number; friction: number }>();
+    for (const g of byAnswer) {
+      const q = questions.get(g.screenId) ?? { total: 0, friction: 0 };
+      q.total += g._count._all;
+      if (isFrictionAnswer(g.value)) q.friction += g._count._all;
+      questions.set(g.screenId, q);
     }
-    const byStageEndRow = rows.length; // конец диапазона исключительно (endRowIndex)
 
-    rows.push(
-      [''],
-      ['2. Трафик по экранам (сколько раз вообще отвечали)'],
-      ['Экран', 'Описание', 'Ответов', ''],
-      ...[...traffic.entries()]
-        .sort((a, b) => b[1] - a[1])
-        .map(([screenId, count]) => [screenId, this.screenLabel(screenId), String(count), '']),
-      [''],
-      ['3. Проблемные экраны (доля ответов "Нет / Не получается / не понял / в КС")'],
-      ['Экран', 'Описание', 'Проблемных / всего', '% проблемных'],
-      ...[...friction.entries()]
-        .filter(([, v]) => v.friction > 0)
-        .sort((a, b) => b[1].friction / b[1].total - a[1].friction / a[1].total)
-        .map(([screenId, v]) => [screenId, this.screenLabel(screenId), `${v.friction}/${v.total}`, `${Math.round((v.friction / v.total) * 100)}%`]),
-    );
+    const total = parents.length;
+    const pct = (n: number, of: number) => (of ? `${Math.round((n / of) * 100)}%` : '0%');
+    // Счётчики — числами, а не строками: иначе диаграмма их не нарисует.
+    const rows: Array<Array<string | number>> = [[`Обновлено: ${moscowDateTime(new Date())} · всего путей: ${total}`], ['']];
+    // Номера строк заголовков разделов и шапок таблиц — для жирного шрифта.
+    const bold: number[] = [0];
+    const section = (title: string, head: string[]) => {
+      bold.push(rows.length, rows.length + 1);
+      rows.push([title], head);
+    };
 
-    // Сначала чистим весь лист — иначе при уменьшении отчёта (например, после
-    // "газ с начала") снизу остались бы старые строки от прошлого прогона.
-    // clear() трогает только значения ячеек — встроенные графики остаются
-    // на месте, поэтому график ниже обновляется в ту же диаграмму, а не
-    // плодит новую на каждом тике.
+    section('1. Статусы', ['Статус', 'Сколько', '% от всех']);
+    const statusStart = rows.length;
+    for (const [s, n] of statusCount) rows.push([s, n, pct(n, total)]);
+    const statusEnd = rows.length;
+
+    rows.push(['']);
+    section('2. Где сейчас родители', ['Пакет, класс', 'Шаг', 'Сколько']);
+    const stepNumber = (s: string) => Number(s.match(/Шаг (\d+)/)?.[1] ?? 0);
+    [...byStep.entries()]
+      .map(([key, n]) => [...key.split('\u0000'), n] as [string, string, number])
+      .sort((a, b) => a[0].localeCompare(b[0], 'ru') || stepNumber(a[1]) - stepNumber(b[1]))
+      .forEach(([pkg, step, n]) => rows.push([pkg, step, n]));
+
+    rows.push(['']);
+    section('3. Где чаще всего затрудняются', ['Вопрос бота', 'Шаг', 'Затруднений / ответов', '% затруднений']);
+    [...questions.entries()]
+      .filter(([, v]) => v.friction > 0)
+      .sort((a, b) => b[1].friction / b[1].total - a[1].friction / a[1].total || b[1].friction - a[1].friction)
+      .slice(0, 30)
+      .forEach(([screenId, v]) => {
+        const screen = this.scenario.hasScreen(screenId) ? this.scenario.getScreen(screenId) : undefined;
+        rows.push([screen ? this.question(screen, {}) : screenId, this.stepName(screen, {}), `${v.friction} / ${v.total}`, pct(v.friction, v.total)]);
+      });
+
+    // clear() трогает только значения — диаграмма остаётся и обновляется на месте.
     await this.sheets!.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: this.statsSheetName });
     await this.sheets!.spreadsheets.values.update({
       spreadsheetId: this.spreadsheetId,
@@ -369,56 +708,25 @@ export class SheetsSyncService implements OnModuleInit {
       valueInputOption: 'RAW',
       requestBody: { values: rows },
     });
-
-    if (sheetId != null) {
-      await this.sheets!.spreadsheets.batchUpdate({
-        spreadsheetId: this.spreadsheetId,
-        requestBody: {
-          requests: [{ autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: 4 } } }],
-        },
-      });
-      await this.ensureStatsChart(sheetId, byStageStartRow, byStageEndRow);
-    }
+    await this.ensureStatsLayout(sheetId, statusStart, statusEnd, bold);
   }
 
-  // Столбчатая диаграмма "где сейчас родители" — чтобы распределение было
-  // видно сразу, без чтения таблицы построчно. Идемпотентно: ищет диаграмму
-  // с тем же заголовком в метаданных листа и обновляет её диапазон (данные
-  // каждый тик пересчитываются, число активных экранов может меняться), а
-  // не добавляет новую — иначе на вкладке копились бы дубли раз в минуту.
-  private async ensureStatsChart(sheetId: number, dataStartRow: number, dataEndRow: number): Promise<void> {
-    // Пустая группировка (например, сразу после "газ с начала", пока никто
-    // не написал боту) — графику нечего показывать, тихо выходим.
-    if (dataEndRow <= dataStartRow) return;
-
-    const chartTitle = 'Где сейчас родители (по экранам)';
+  // Ширина колонок и диаграмма статусов — один раз; дальше только диапазон
+  // диаграммы и жирные строки (их номера меняются вместе с отчётом).
+  // Диаграмму ищем по заголовку, иначе копились бы дубли.
+  private async ensureStatsLayout(sheetId: number, dataStart: number, dataEnd: number, boldRows: number[]): Promise<void> {
+    const title = 'Статусы родителей';
     const spec: sheets_v4.Schema$ChartSpec = {
-      title: chartTitle,
+      title,
       basicChart: {
-        chartType: 'COLUMN',
+        chartType: 'BAR',
         legendPosition: 'NO_LEGEND',
-        headerCount: 0,
-        axis: [
-          { position: 'BOTTOM_AXIS', title: 'Экран' },
-          { position: 'LEFT_AXIS', title: 'Родителей' },
-        ],
-        domains: [
-          {
-            domain: {
-              sourceRange: {
-                sources: [{ sheetId, startRowIndex: dataStartRow, endRowIndex: dataEndRow, startColumnIndex: 0, endColumnIndex: 1 }],
-              },
-            },
-          },
-        ],
+        axis: [{ position: 'BOTTOM_AXIS', title: 'Родителей' }],
+        domains: [{ domain: { sourceRange: { sources: [{ sheetId, startRowIndex: dataStart, endRowIndex: dataEnd, startColumnIndex: 0, endColumnIndex: 1 }] } } }],
         series: [
           {
-            series: {
-              sourceRange: {
-                sources: [{ sheetId, startRowIndex: dataStartRow, endRowIndex: dataEndRow, startColumnIndex: 2, endColumnIndex: 3 }],
-              },
-            },
-            targetAxis: 'LEFT_AXIS',
+            series: { sourceRange: { sources: [{ sheetId, startRowIndex: dataStart, endRowIndex: dataEnd, startColumnIndex: 1, endColumnIndex: 2 }] } },
+            targetAxis: 'BOTTOM_AXIS',
           },
         ],
       },
@@ -429,274 +737,97 @@ export class SheetsSyncService implements OnModuleInit {
       ranges: [this.statsSheetName],
       fields: 'sheets(charts(chartId,spec.title))',
     });
-    const existingChartId = meta.data.sheets?.[0]?.charts?.find((c) => c.spec?.title === chartTitle)?.chartId;
+    const charts = meta.data.sheets?.[0]?.charts ?? [];
+    const existing = charts.find((c) => c.spec?.title === title);
+    const requests: sheets_v4.Schema$Request[] = [
+      ...charts.filter((c) => c.spec?.title !== title).map((c) => ({ deleteEmbeddedObject: { objectId: c.chartId! } })),
+      { repeatCell: { range: { sheetId }, cell: { userEnteredFormat: { textFormat: { bold: false } } }, fields: 'userEnteredFormat.textFormat.bold' } },
+      ...boldRows.map((row) => ({
+        repeatCell: {
+          range: { sheetId, startRowIndex: row, endRowIndex: row + 1 },
+          cell: { userEnteredFormat: { textFormat: { bold: true } } },
+          fields: 'userEnteredFormat.textFormat.bold',
+        },
+      })),
+    ];
 
+    if (existing) {
+      requests.push({ updateChartSpec: { chartId: existing.chartId!, spec } });
+    } else {
+      requests.push(
+        ...this.columnWidths(sheetId, [340, 230, 160, 120]),
+        { repeatCell: { range: { sheetId }, cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'TOP' } }, fields: 'userEnteredFormat(wrapStrategy,verticalAlignment)' } },
+        {
+          addChart: {
+            chart: { spec, position: { overlayPosition: { anchorCell: { sheetId, rowIndex: 0, columnIndex: 5 }, widthPixels: 520, heightPixels: 280 } } },
+          },
+        },
+      );
+    }
+    await this.sheets!.spreadsheets.batchUpdate({ spreadsheetId: this.spreadsheetId, requestBody: { requests } });
+  }
+
+  // ─────────── Как читать ───────────
+
+  private async syncGuide(sheetId: number): Promise<void> {
+    const marker = `Как читать эту таблицу (${GUIDE_VERSION})`;
+    const res = await this.sheets!.spreadsheets.values.get({ spreadsheetId: this.spreadsheetId, range: `${this.guideSheetName}!A1` });
+    if (res.data.values?.[0]?.[0] === marker) return;
+
+    const p = this.parentsSheetName;
+    const rows: string[][] = [
+      [marker, ''],
+      ['Таблицу заполняет бот «Зачисление в школу», обновляется раз в минуту.', ''],
+      [''],
+      ['Вкладки', ''],
+      [p, 'Один родитель (герой) — одна строка: на каком шаге, всё ли в порядке, что сделать.'],
+      [this.answersSheetName, 'Журнал: кто, когда, на какой вопрос бота что ответил. Красным — затруднения.'],
+      [this.statsSheetName, 'Сводка: сколько родителей в каждом статусе, на каких шагах, где чаще всего затрудняются.'],
+      [''],
+      ['Статусы', ''],
+      [STATUS.help, 'Последний ответ родителя — «не получается»: пусто, не подходит пароль, не нашёл, нет документа, незачёт. Стоит связаться.'],
+      [STATUS.silent, 'Нет ответа на 3 напоминания подряд — бот перестал напоминать про этот шаг. Стоит связаться.'],
+      [STATUS.deferred, 'Родитель сам попросил отложить первый шаг. Бот напомнит — дата в колонке «Что происходит».'],
+      [STATUS.notStarted, 'Бот запущен, но пакет и класс ещё не выбраны.'],
+      [STATUS.ok, 'Всё идёт своим ходом. В «Что происходит» — какой вопрос бот задал и когда напомнит.'],
+      [''],
+      ['Что можно править', ''],
+      ['Имя, телефон, пакет, класс', `Белые колонки на вкладке «${p}». Правка уходит в бота через минуту. Пакет и класс — из списка.`],
+      ['Остальные колонки', 'Серые, их заполняет бот. Ручная правка перезапишется через минуту.'],
+      ['Удаление строки', 'Строка вернётся через минуту. Удалить родителя из бота можно только из самого бота.'],
+      ['Сортировка и фильтры', 'Можно сортировать и фильтровать как угодно — бот находит строки по скрытому id.'],
+    ];
+    await this.sheets!.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: this.guideSheetName });
+    await this.sheets!.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.guideSheetName}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: rows },
+    });
+
+    const bold = (row: number) => ({
+      repeatCell: { range: { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat.textFormat' },
+    });
+    const statusRows = STATUS_COLORS.map(([text, hex], i) => ({
+      repeatCell: {
+        range: { sheetId, startRowIndex: 9 + i, endRowIndex: 10 + i, startColumnIndex: 0, endColumnIndex: 1 },
+        cell: { userEnteredFormat: { backgroundColor: rgb(hex), textFormat: { bold: true } } },
+        fields: 'userEnteredFormat(backgroundColor,textFormat)',
+      },
+    }));
     await this.sheets!.spreadsheets.batchUpdate({
       spreadsheetId: this.spreadsheetId,
       requestBody: {
         requests: [
-          existingChartId != null
-            ? { updateChartSpec: { chartId: existingChartId, spec } }
-            : {
-                addChart: {
-                  chart: {
-                    spec,
-                    position: {
-                      overlayPosition: {
-                        anchorCell: { sheetId, rowIndex: 0, columnIndex: 5 },
-                        widthPixels: 640,
-                        heightPixels: 360,
-                      },
-                    },
-                  },
-                },
-              },
+          ...this.columnWidths(sheetId, [230, 620]),
+          { repeatCell: { range: { sheetId }, cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'TOP' } }, fields: 'userEnteredFormat(wrapStrategy,verticalAlignment)' } },
+          { repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 14 } } }, fields: 'userEnteredFormat.textFormat' } },
+          bold(3),
+          bold(8),
+          bold(15),
+          ...statusRows,
         ],
       },
     });
-  }
-
-  // Создаёт вкладку в таблице, если её ещё нет, пишет заголовок в пустую
-  // вкладку и один раз применяет базовое форматирование (жирная закреплённая
-  // шапка, авто-ширина колонок) — чтобы вкладку было легко читать визуально,
-  // а не только парсить программно. Возвращает числовой sheetId вкладки.
-  private async ensureSheetTab(name: string, header: string[]): Promise<number | undefined> {
-    const meta = await this.sheets!.spreadsheets.get({ spreadsheetId: this.spreadsheetId });
-    let sheetId = meta.data.sheets?.find((s) => s.properties?.title === name)?.properties?.sheetId ?? undefined;
-
-    if (sheetId == null) {
-      const created = await this.sheets!.spreadsheets.batchUpdate({
-        spreadsheetId: this.spreadsheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: name } } }] },
-      });
-      sheetId = created.data.replies?.[0]?.addSheet?.properties?.sheetId ?? undefined;
-    }
-
-    const lastCol = String.fromCharCode('A'.charCodeAt(0) + header.length - 1);
-    const res = await this.sheets!.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${name}!A1:${lastCol}1`,
-    });
-    const headerWasMissing = !res.data.values?.length;
-    if (headerWasMissing) {
-      await this.sheets!.spreadsheets.values.update({
-        spreadsheetId: this.spreadsheetId,
-        range: `${name}!A1`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [header] },
-      });
-
-      if (sheetId != null) {
-        await this.sheets!.spreadsheets.batchUpdate({
-          spreadsheetId: this.spreadsheetId,
-          requestBody: {
-            requests: [
-              { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
-              {
-                repeatCell: {
-                  range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
-                  cell: { userEnteredFormat: { textFormat: { bold: true }, backgroundColor: { red: 0.9, green: 0.92, blue: 0.96 } } },
-                  fields: 'userEnteredFormat(textFormat,backgroundColor)',
-                },
-              },
-              { autoResizeDimensions: { dimensions: { sheetId, dimension: 'COLUMNS', startIndex: 0, endIndex: header.length } } },
-            ],
-          },
-        });
-      }
-    }
-
-    return sheetId;
-  }
-
-  // Хеш бизнес-полей из БД — в ТОМ ЖЕ каноническом виде (массив строк),
-  // что и хеш строки таблицы, иначе они несравнимы (см. комментарий у hashCells).
-  private hashOfEditable(f: EditableFields): string {
-    return hashCells(this.rowValues('', '', f).slice(2));
-  }
-
-  private pickEditable(user: {
-    clientCode: string | null;
-    name: string | null;
-    phone: string | null;
-    package: string | null;
-    class: string | null;
-    isReturning: boolean | null;
-    stage: string;
-    cohortYear: number | null;
-    deferredStage1: boolean;
-    resumePoint: string | null;
-    consentAt: Date | null;
-    consecutiveMisses: number;
-    mutedStages: string[];
-  }): EditableFields {
-    return {
-      clientCode: user.clientCode,
-      name: user.name,
-      phone: user.phone,
-      package: user.package,
-      class: user.class,
-      isReturning: user.isReturning,
-      stage: user.stage,
-      cohortYear: user.cohortYear,
-      deferredStage1: user.deferredStage1,
-      resumePoint: user.resumePoint,
-      consentAt: user.consentAt,
-      consecutiveMisses: user.consecutiveMisses,
-      mutedStages: user.mutedStages,
-    };
-  }
-
-  private async ensureHeader(): Promise<void> {
-    const res = await this.sheets!.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.sheetName}!${SHEET_HEADER_RANGE}`,
-    });
-    if (!res.data.values?.length) {
-      await this.sheets!.spreadsheets.values.update({
-        spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!${SHEET_HEADER_RANGE}`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [HEADER] },
-      });
-    }
-    // Справочная колонка P — намеренно ВНЕ HEADER/SHEET_RANGE_ALL: она не
-    // читается обратно в readSheetRows/parseRow и не входит в hashOfCells,
-    // поэтому не может повлиять на двустороннюю синхронизацию, даже если
-    // кто-то впишет в неё что-то руками. Только расшифровка stage для чтения.
-    const labelHeader = await this.sheets!.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.sheetName}!${LABEL_COLUMN}1`,
-    });
-    if (!labelHeader.data.values?.length) {
-      await this.sheets!.spreadsheets.values.update({
-        spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!${LABEL_COLUMN}1`,
-        valueInputOption: 'RAW',
-        requestBody: { values: [[LABEL_COLUMN_HEADER]] },
-      });
-    }
-  }
-
-  // Не часть round-trip: отдельный вызов после appendRow/writeRow, только
-  // для удобства чтения человеком. rowNumber всегда известен вызывающей
-  // стороне (append — из ответа API, write — уже был известен заранее).
-  private async writeLabelCell(rowNumber: number, stage: string): Promise<void> {
-    await this.sheets!.spreadsheets.values.update({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.sheetName}!${LABEL_COLUMN}${rowNumber}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [[this.screenLabel(stage)]] },
-    });
-  }
-
-  private async readSheetRows(): Promise<Array<{ id: string; rowNumber: number; tgId: string; cells: string[]; hash: string }>> {
-    const res = await this.sheets!.spreadsheets.values.get({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.sheetName}!${SHEET_RANGE_ALL}`,
-    });
-    const rows = res.data.values ?? [];
-    return rows
-      .map((cells, i) => ({ id: (cells[0] ?? '').trim(), rowNumber: i + 2, tgId: cells[1] ?? '', cells, hash: '' }))
-      .filter((r) => r.id.length > 0)
-      .map((r) => ({ ...r, hash: this.hashOfCells(r.cells) }));
-  }
-
-  // Хеш видимых бизнес-полей строки (без id/tgId — они не редактируются).
-  private hashOfCells(cells: string[]): string {
-    return hashCells(cells.slice(2, 15));
-  }
-
-  // Индексы строго по HEADER: 0=id, 1=tgId, дальше бизнес-поля с 2 по 14.
-  private parseRow(row: { cells: string[] }): { ok: true; fields: EditableFields } | { ok: false; error: string } {
-    const c = row.cells;
-    const stage = (c[8] ?? '').trim();
-    if (!stage || !this.scenario.hasScreen(stage)) {
-      return { ok: false, error: `недопустимый stage "${stage}"` };
-    }
-    const resumePoint = (c[11] ?? '').trim() || null;
-    if (resumePoint && !this.scenario.hasScreen(resumePoint)) {
-      return { ok: false, error: `недопустимый resumePoint "${resumePoint}"` };
-    }
-    const cohortYearRaw = (c[9] ?? '').trim();
-    const cohortYear = cohortYearRaw ? Number(cohortYearRaw) : null;
-    if (cohortYearRaw && Number.isNaN(cohortYear)) {
-      return { ok: false, error: `нечисловой cohortYear "${cohortYearRaw}"` };
-    }
-    const consecutiveMissesRaw = (c[13] ?? '').trim();
-    const consecutiveMisses = consecutiveMissesRaw ? Number(consecutiveMissesRaw) : 0;
-    if (Number.isNaN(consecutiveMisses)) {
-      return { ok: false, error: `нечисловой consecutiveMisses "${consecutiveMissesRaw}"` };
-    }
-    const consentAtRaw = (c[12] ?? '').trim();
-    const consentAt = consentAtRaw ? new Date(consentAtRaw) : null;
-    if (consentAtRaw && Number.isNaN(consentAt?.getTime())) {
-      return { ok: false, error: `нечитаемая дата consentAt "${consentAtRaw}"` };
-    }
-
-    return {
-      ok: true,
-      fields: {
-        clientCode: (c[2] ?? '').trim() || null,
-        name: (c[3] ?? '').trim() || null,
-        phone: (c[4] ?? '').trim() || null,
-        package: (c[5] ?? '').trim() || null,
-        class: (c[6] ?? '').trim() || null,
-        isReturning: parseBool(c[7] ?? ''),
-        stage,
-        cohortYear,
-        deferredStage1: parseBool(c[10] ?? '') ?? false,
-        resumePoint,
-        consentAt,
-        consecutiveMisses,
-        mutedStages: (c[14] ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean),
-      },
-    };
-  }
-
-  private rowValues(id: string, tgId: string, f: EditableFields): string[] {
-    return [
-      id,
-      tgId,
-      toCell(f.clientCode),
-      toCell(f.name),
-      toCell(f.phone),
-      toCell(f.package),
-      toCell(f.class),
-      toCell(f.isReturning),
-      toCell(f.stage),
-      toCell(f.cohortYear),
-      toCell(f.deferredStage1),
-      toCell(f.resumePoint),
-      toCell(f.consentAt),
-      toCell(f.consecutiveMisses),
-      toCell(f.mutedStages),
-    ];
-  }
-
-  private async appendRow(id: string, tgId: string, f: EditableFields): Promise<void> {
-    const res = await this.sheets!.spreadsheets.values.append({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.sheetName}!A:O`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [this.rowValues(id, tgId, f)] },
-    });
-    // updatedRange выглядит как "Users!A5:O5" — оттуда достаём номер строки,
-    // чтобы поставить расшифровку в ту же строку колонки P.
-    const match = res.data.updates?.updatedRange?.match(/(\d+):/);
-    if (match) await this.writeLabelCell(Number(match[1]), f.stage);
-  }
-
-  private async writeRow(rowNumber: number, id: string, tgId: string, f: EditableFields): Promise<void> {
-    await this.sheets!.spreadsheets.values.update({
-      spreadsheetId: this.spreadsheetId,
-      range: `${this.sheetName}!A${rowNumber}:O${rowNumber}`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [this.rowValues(id, tgId, f)] },
-    });
-    await this.writeLabelCell(rowNumber, f.stage);
   }
 }

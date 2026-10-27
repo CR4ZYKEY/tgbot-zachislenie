@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
 import { ScreenRendererService } from '../render/screen-renderer.service';
 import { isReminderTestMode, reminderHoursToMs } from '../render/reminder-timing.util';
+import { checkReminder } from './reminder-check.util';
 
 // Тихие часы: пишем родителю только с 10:00 до 21:00 МСК (модель напоминаний,
 // CLAUDE.md). Москва — UTC+3 круглый год, перевода часов нет, поэтому хватает
@@ -14,7 +15,7 @@ const QUIET_FROM_HOUR = 10;
 const QUIET_TO_HOUR = 21;
 
 // «Не более одного касания в сутки» — считаем по реально отправленным
-// напоминаниям, а не по lastTouchAt: тот обновляется и когда родитель сам
+// напоминаниям, а не по lastTouchAt: тот обновляется, когда родитель сам
 // нажимает кнопки, и активный родитель иначе переставал бы получать
 // напоминания вовсе.
 const MIN_HOURS_BETWEEN_TOUCHES = 20;
@@ -73,38 +74,15 @@ export class RemindersService {
       return;
     }
 
-    // jobType — "<экран-ожидание>:<номер в расписании>", см. scheduleReminders
-    // в screen-renderer.service.ts. Сценарий мог измениться с момента
-    // постановки задачи, поэтому проверяем, что экран и шаг ещё существуют.
-    const [sourceId, indexRaw] = job.jobType.split(':');
-    const source = this.scenario.hasScreen(sourceId) ? this.scenario.getScreen(sourceId) : undefined;
-    const reminder = source?.reminders?.schedule[Number(indexRaw)];
-    if (!source?.reminders || !reminder) {
-      this.logger.warn(`Напоминание ${job.dedupKey}: шага "${job.jobType}" больше нет в сценарии — снимаю`);
+    const check = checkReminder(this.scenario, user, job.jobType);
+    if (!check.ok) {
+      if (check.reason === 'gone') {
+        this.logger.warn(`Напоминание ${job.dedupKey}: шага "${job.jobType}" больше нет в сценарии — снимаю`);
+      }
       await this.finish(job, 'cancelled');
       return;
     }
-
-    // Родитель уже ушёл из зоны ожидания — значит подтвердил, что письмо
-    // пришло. Оставшиеся напоминания по этому поводу больше не нужны.
-    // У напоминания может быть своя зона (календарь выпускника).
-    const waitingScreens = reminder.waitingScreens ?? source.reminders.waitingScreens;
-    // Класс проверяется и при постановке, и здесь: родитель мог вернуться
-    // и выбрать другой класс — даты старого класса ему уже не нужны.
-    const wrongClass = reminder.forClass != null && !reminder.forClass.includes(user.class ?? '');
-    // Экран «поверх шага» (продление: кнопки ведут на previous) — родитель
-    // на нём не ушёл со своего шага, а просто ещё не закрыл его. Тогда
-    // сверяемся с шагом под ним, иначе напоминание о шаге снялось бы навсегда.
-    const current = this.scenario.hasScreen(user.stage) ? this.scenario.getScreen(user.stage) : undefined;
-    const onTop = current?.buttons?.some((b) => b.next === 'previous') ?? false;
-    const underlying = onTop ? user.historyStack[user.historyStack.length - 1] : undefined;
-    const inZone = waitingScreens.includes(user.stage) || (underlying != null && waitingScreens.includes(underlying));
-    // Отложенный этап 1: важен не экран, а то, вернулся ли родитель к платформе.
-    const relevant = reminder.ifDeferred ? user.deferredStage1 : inZone;
-    if (!relevant || wrongClass) {
-      await this.finish(job, 'cancelled');
-      return;
-    }
+    const { reminder, stage } = check;
 
     // Родитель уже ответил на то, о чём напоминание (например, «Уже продлили»).
     if (reminder.skipIfAnswered) {
@@ -117,12 +95,7 @@ export class RemindersService {
       }
     }
 
-    // Этап на паузе (три неотвеченных касания подряд) — молчим. Этап — тот,
-    // о котором напоминание: календарь выпускника ставится с одного экрана,
-    // но молчание про собеседование не должно глушить напоминания об экзаменах.
-    const stage = this.scenario.hasScreen(reminder.screen)
-      ? this.scenario.getScreen(reminder.screen).stage
-      : source.stage;
+    // Этап на паузе (три неотвеченных касания подряд) — молчим.
     if (user.mutedStages.includes(stage)) {
       await this.finish(job, 'cancelled');
       return;

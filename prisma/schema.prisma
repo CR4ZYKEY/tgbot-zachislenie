@@ -71,6 +71,8 @@ model User {
   cohortYear Int?
 
   consentAt    DateTime?
+  // Последнее действие самого родителя (нажатие, ввод). Напоминания бота его
+  // не двигают — по нему в таблице видно, когда родитель был в боте.
   lastTouchAt  DateTime?
 
   // Этапы, поставленные на паузу правилом «3 неотвеченных касания подряд».
@@ -80,22 +82,17 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // ВРЕМЕННО, ТОЛЬКО ДЛЯ ТЕСТОВОГО БОТА — см. src/worker/sheets-sync.service.ts.
-  // Хеш последних значений бизнес-полей, отданных в корпоративную Google-таблицу.
-  // Не совпадает с текущим хешем строки в таблице -> строку правили руками ->
-  // тянем изменение в БД. Не совпадает с хешем текущих полей в БД -> бот
-  // сам изменил данные -> перезаписываем строку в таблице. NULL — ещё не
-  // синхронизировался (новый пользователь, строки в таблице ещё нет).
-  // По спеке (раздел 8) выгрузка в Sheets должна быть односторонней и раз
-  // в сутки, только client_code — это временное отступление до продакшена.
+  // Хеш редактируемых колонок строки (имя, телефон, пакет, класс), какими
+  // бот их последний раз записал в Google-таблицу — см. sheets-sync.service.ts.
+  // Строка в таблице с другим хешем — её правили руками, правка идёт в БД.
+  // NULL — строки в таблице ещё нет.
   sheetSyncHash String?
 
-  answers   Answer[]
-  checklist ChecklistItem[]
-  jobs      Job[]
+  answers Answer[]
+  jobs    Job[]
 
+  // Индекс по tgId не нужен отдельно: его покрывает этот уникальный.
   @@unique([tgId, slot])
-  @@index([tgId])
   @@map("users")
 }
 
@@ -110,21 +107,11 @@ model Answer {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, screenId])
+  // userId+createdAt — последний ответ родителя (статус в таблице) и
+  // skipIfAnswered напоминаний; createdAt — выгрузка новых ответов раз в минуту.
+  @@index([userId, createdAt])
+  @@index([createdAt])
   @@map("answers")
-}
-
-// Чек-лист аттестаций (Э3/Э4) — один предмет на строку.
-model ChecklistItem {
-  id      String    @id @default(cuid())
-  userId  String
-  subject String
-  doneAt  DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, subject])
-  @@map("checklist_items")
 }
 
 // Очередь напоминаний. dedup_key гарантирует, что рестарт воркера
@@ -144,12 +131,14 @@ model Job {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // runAt+status — очередь воркера; userId+status — «одно касание в сутки»
+  // и ближайшее напоминание родителя в таблице.
   @@index([runAt, status])
+  @@index([userId, status])
   @@map("jobs")
 }
 
-// ВРЕМЕННО, ТОЛЬКО ДЛЯ ТЕСТОВОГО БОТА — курсор для выгрузки answers
-// (лог "Затруднений") во вкладку "Ответы" Google-таблицы, см.
+// Курсор выгрузки answers во вкладку "Ответы" Google-таблицы, см.
 // src/worker/sheets-sync.service.ts. Хранит момент последнего
 // выгруженного ответа по времени, а не по количеству строк — иначе
 // "газ с начала" (массовое удаление users/answers) сбивал бы выгрузку.

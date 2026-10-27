@@ -37,6 +37,10 @@ export class ScenarioService implements OnModuleInit {
     return this.screensById.has(id);
   }
 
+  get screens(): Screen[] {
+    return this.scenario.screens;
+  }
+
   get system(): Scenario['system'] {
     return this.scenario.system;
   }
