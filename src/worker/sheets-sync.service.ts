@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ScenarioService } from '../scenario/scenario.service';
 import { ScreenRendererService } from '../render/screen-renderer.service';
 import { renderTemplate, TemplateVars } from '../render/template.util';
-import type { Screen } from '../../scenario/schema';
+import type { Reminder, Screen } from '../../scenario/schema';
 import { normalizePhone } from '../bot/phone.util';
 import { isFrictionAnswer } from './friction.util';
 import { checkReminder } from './reminder-check.util';
@@ -20,6 +20,8 @@ import { checkReminder } from './reminder-check.util';
 //                  класс можно править — правка уходит в бота. Остальное
 //                  считает бот и перезаписывает.
 //   "Ответы"     — журнал: кто, когда, на какой вопрос бота что нажал.
+//   "Напоминания" — общие (календарь тарифа) и персональные (после действий
+//                  родителя), только те, что правда придут.
 //   "Статистика" — сводка по статусам, шагам и проблемным вопросам.
 //   "Как читать" — пояснения к колонкам и цветам.
 //
@@ -90,8 +92,36 @@ const ANSWERS_COLUMNS: Array<{ title: string; width: number }> = [
 ];
 const ANSWERS_CURSOR_KEY = 'answers_sheet';
 
+// Тариф по этапу экрана — для общих (календарных) напоминаний: у экрана нет
+// поля «тариф», а этапы у веток свои (docs/Тарифы.md).
+const TARIFF_BY_STAGE: Array<[RegExp, string]> = [
+  [/^stage/, 'Базовый · 1–8, 10 класс'],
+  [/^graduate/, 'Базовый без ГИА · 9, 11 класс'],
+  [/^bgia/, 'Базовый с ГИА · 9, 11 класс'],
+  [/^kcl/, 'Классный · 1–8, 10 класс'],
+  [/^kvyp/, 'Классный · 9, 11 класс'],
+];
+const PERSONAL_LIMIT = 500;
+
+// Тихие часы воркера (reminders.service.ts): то, что выпало на ночь, уйдёт в 10:00 МСК.
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+function daytime(d: Date): Date {
+  const msk = new Date(d.getTime() + MSK_OFFSET_MS);
+  const hour = msk.getUTCHours();
+  if (hour >= 10 && hour < 21) return d;
+  const day = Date.UTC(msk.getUTCFullYear(), msk.getUTCMonth(), msk.getUTCDate() + (hour >= 21 ? 1 : 0), 10);
+  return new Date(day - MSK_OFFSET_MS);
+}
+
+function daysText(hours: number): string {
+  if (hours < 24) return `${hours} ч`;
+  const n = Math.round(hours / 24);
+  const word = n % 10 === 1 && n % 100 !== 11 ? 'день' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'дня' : 'дней';
+  return `${n} ${word}`;
+}
+
 // Меняется вместе с текстом вкладки "Как читать" — тогда она перепишется.
-const GUIDE_VERSION = 'v2';
+const GUIDE_VERSION = 'v3';
 
 function colLetter(index: number): string {
   return String.fromCharCode('A'.charCodeAt(0) + index);
@@ -131,6 +161,8 @@ function padRow(cells: string[], width: number): string[] {
 type LastAnswer = { screenId: string; value: string; createdAt: Date };
 type ParentRowContext = { last?: LastAnswer; nextReminder?: Date };
 type ParentRow = { user: User; row: string[] };
+// Напоминание из очереди, которое правда придёт.
+type Upcoming = { user: User; jobType: string; runAt: Date; reminder: Reminder; source: Screen };
 
 @Injectable()
 export class SheetsSyncService implements OnModuleInit {
@@ -139,6 +171,7 @@ export class SheetsSyncService implements OnModuleInit {
   private spreadsheetId = '';
   private parentsSheetName = 'Родители';
   private answersSheetName = 'Ответы';
+  private remindersSheetName = 'Напоминания';
   private statsSheetName = 'Статистика';
   private guideSheetName = 'Как читать';
   private enabled = false;
@@ -188,8 +221,11 @@ export class SheetsSyncService implements OnModuleInit {
 
     try {
       const tabs = await this.ensureTabs();
-      const parents = await this.syncParents(tabs.get(this.parentsSheetName)!);
+      const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
+      const upcoming = await this.upcoming(users);
+      const parents = await this.syncParents(tabs.get(this.parentsSheetName)!, users, upcoming);
       await this.syncAnswers(tabs.get(this.answersSheetName)!);
+      await this.syncReminders(tabs.get(this.remindersSheetName)!, upcoming);
       await this.syncStats(tabs.get(this.statsSheetName)!, parents);
       await this.syncGuide(tabs.get(this.guideSheetName)!);
     } catch (err) {
@@ -201,7 +237,7 @@ export class SheetsSyncService implements OnModuleInit {
 
   // Создаёт недостающие вкладки, возвращает их sheetId по имени.
   private async ensureTabs(): Promise<Map<string, number>> {
-    const names = [this.parentsSheetName, this.answersSheetName, this.statsSheetName, this.guideSheetName];
+    const names = [this.parentsSheetName, this.answersSheetName, this.remindersSheetName, this.statsSheetName, this.guideSheetName];
     const meta = await this.sheets!.spreadsheets.get({ spreadsheetId: this.spreadsheetId, fields: 'sheets.properties' });
     const ids = new Map<string, number>();
     for (const s of meta.data.sheets ?? []) {
@@ -211,7 +247,7 @@ export class SheetsSyncService implements OnModuleInit {
     if (missing.length) {
       const created = await this.sheets!.spreadsheets.batchUpdate({
         spreadsheetId: this.spreadsheetId,
-        requestBody: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
+        requestBody: { requests: missing.map((title) => ({ addSheet: { properties: { title, index: names.indexOf(title) } } })) },
       });
       for (const reply of created.data.replies ?? []) {
         const p = reply.addSheet?.properties;
@@ -356,7 +392,7 @@ export class SheetsSyncService implements OnModuleInit {
   }
 
   // Возвращает строки всех путей — из них же считается "Статистика".
-  private async syncParents(sheetId: number): Promise<ParentRow[]> {
+  private async syncParents(sheetId: number, users: User[], upcoming: Upcoming[]): Promise<ParentRow[]> {
     const name = this.parentsSheetName;
     await this.ensureHeader(name, sheetId, PARENTS_COLUMNS.map((c) => c.title), () => this.parentsFormat(sheetId));
 
@@ -365,10 +401,11 @@ export class SheetsSyncService implements OnModuleInit {
       .map((cells, i) => ({ rowNumber: i + 2, cells: padRow(cells.map(String), COLS) }))
       .filter((r) => r.cells[ID_COL].trim());
 
-    const users = await this.prisma.user.findMany({ orderBy: { createdAt: 'asc' } });
     const userIds = new Set(users.map((u) => u.id));
     const lastAnswers = await this.lastAnswers();
-    const nextReminders = await this.nextReminders(users);
+    // upcoming отсортирован по времени — первое у родителя и есть ближайшее.
+    const nextReminders = new Map<string, Date>();
+    for (const u of upcoming) if (!nextReminders.has(u.user.id)) nextReminders.set(u.user.id, u.runAt);
 
     // Дубль строки (скопировали) и строки удалённых родителей — убираем.
     const byId = new Map<string, (typeof sheetRows)[number]>();
@@ -466,7 +503,7 @@ export class SheetsSyncService implements OnModuleInit {
   }
 
   private status(user: User, screen: Screen | undefined, vars: TemplateVars, ctx: ParentRowContext): { status: string; why: string } {
-    const remind = ctx.nextReminder ? `бот напомнит ${moscowDayMonth(ctx.nextReminder)}` : '';
+    const remind = ctx.nextReminder ? `бот напомнит ${moscowDayMonth(daytime(ctx.nextReminder))}` : '';
 
     if (ctx.last && isFrictionAnswer(ctx.last.value)) {
       const label = this.answerLabel(ctx.last.screenId, ctx.last.value, vars);
@@ -508,23 +545,26 @@ export class SheetsSyncService implements OnModuleInit {
     return new Map(rows.map((r) => [r.userId, r]));
   }
 
-  // Ближайшее напоминание, которое правда придёт: устаревшие задачи в очереди
-  // (родитель ушёл с экрана) воркер снимет при наступлении срока.
-  private async nextReminders(users: User[]): Promise<Map<string, Date>> {
+  // Напоминания из очереди, которые правда придут, по времени: устаревшие
+  // задачи (родитель ушёл с экрана, этап на паузе) воркер снимет при
+  // наступлении срока — показывать их сотрудникам незачем.
+  private async upcoming(users: User[]): Promise<Upcoming[]> {
     const byId = new Map(users.map((u) => [u.id, u]));
     const jobs = await this.prisma.job.findMany({
       where: { status: 'pending' },
       select: { userId: true, jobType: true, runAt: true },
       orderBy: { runAt: 'asc' },
     });
-    const next = new Map<string, Date>();
+    const out: Upcoming[] = [];
     for (const job of jobs) {
       const user = byId.get(job.userId);
-      if (!user || next.has(job.userId)) continue;
+      if (!user) continue;
       const check = checkReminder(this.scenario, user, job.jobType);
-      if (check.ok && !user.mutedStages.includes(check.stage)) next.set(job.userId, job.runAt);
+      if (check.ok && !user.mutedStages.includes(check.stage)) {
+        out.push({ user, jobType: job.jobType, runAt: job.runAt, reminder: check.reminder, source: check.source });
+      }
     }
-    return next;
+    return out;
   }
 
   // ─────────── Тексты из сценария ───────────
@@ -544,6 +584,13 @@ export class SheetsSyncService implements OnModuleInit {
     if (!bold.length && onlyQuestion) return '';
     const q = bold.length ? bold[bold.length - 1] : plain(text.split('\n')[0]);
     return q.length > 120 ? `${q.slice(0, 117)}...` : q;
+  }
+
+  // Суть экрана — первый абзац: у напоминаний там тема и срок («Промежуточная
+  // аттестация — до 1 декабря…»), а вопрос в конце обычно общий («Как успехи?»).
+  private gist(screen: Screen, vars: TemplateVars): string {
+    const first = plain(renderTemplate(screen.text ?? '', vars).split(/\n\s*\n/)[0]);
+    return first.length > 160 ? `${first.slice(0, 157)}...` : first;
   }
 
   // Подпись нажатой кнопки вместо кода; свободный ввод — как есть.
@@ -636,6 +683,123 @@ export class SheetsSyncService implements OnModuleInit {
       where: { key: ANSWERS_CURSOR_KEY },
       create: { key: ANSWERS_CURSOR_KEY, value: last },
       update: { value: last },
+    });
+  }
+
+  // ─────────── Напоминания ───────────
+
+  // Отчёт, как "Статистика": вкладка целиком перезаписывается каждый тик.
+  // Общие — календарь тарифов из сценария (at:), с числом родителей, которым
+  // дата придёт. Персональные — относительные (через N дней после экрана),
+  // каждое отдельной строкой, ближайшие сверху.
+  private async syncReminders(sheetId: number, upcoming: Upcoming[]): Promise<void> {
+    const now = new Date();
+    const rows: Array<Array<string | number>> = [
+      [`Обновлено: ${moscowDateTime(now)} · бот пишет с 10:00 до 21:00 МСК и не чаще раза в сутки — время ниже с учётом этого, сутки могут сдвинуть`],
+      [''],
+    ];
+    const bold: number[] = [0];
+    // Строки-заголовки — в одну строку поверх соседних ячеек, без переноса.
+    const titles: number[] = [0];
+    const grey: number[] = [];
+    const section = (title: string, head: string[]) => {
+      titles.push(rows.length);
+      bold.push(rows.length, rows.length + 1);
+      rows.push([title], head);
+    };
+
+    const willGet = new Map<string, number>();
+    for (const u of upcoming) willGet.set(u.jobType, (willGet.get(u.jobType) ?? 0) + 1);
+
+    const general = new Map<string, { at: string; tariff: string; about: string; count: number }>();
+    for (const source of this.scenario.screens) {
+      (source.reminders?.schedule ?? []).forEach((reminder, i) => {
+        if (!reminder.at) return;
+        // Тариф — по экрану напоминания: календарь может ставиться со
+        // стартового экрана, общего для всех веток.
+        const target = this.scenario.hasScreen(reminder.screen) ? this.scenario.getScreen(reminder.screen) : undefined;
+        const stage = target?.stage ?? source.stage;
+        const tariff = TARIFF_BY_STAGE.find(([re]) => re.test(stage))?.[1] ?? stage;
+        const classes = reminder.forClass ? `${tariff.split(' · ')[0]} · ${reminder.forClass.join(', ')} класс` : tariff;
+        const about = target ? this.gist(target, { grade11: reminder.forClass?.length === 1 && reminder.forClass[0] === '11' }) : reminder.screen;
+        const key = `${reminder.at}\u0000${classes}\u0000${about}`;
+        const row = general.get(key) ?? { at: reminder.at, tariff: classes, about, count: 0 };
+        row.count += willGet.get(`${source.id}:${i}`) ?? 0;
+        general.set(key, row);
+      });
+    }
+
+    section('1. Общие — по календарю тарифа', ['Дата', 'Тариф', 'О чём напомнит', 'Получат (родителей)', 'Статус']);
+    // Сначала предстоящие, прошедшие — серым в конце раздела.
+    const dated = [...general.values()]
+      .map((g) => ({ ...g, when: new Date(`${g.at}T10:00:00+03:00`) }))
+      .sort((a, b) => a.at.localeCompare(b.at) || a.tariff.localeCompare(b.tariff, 'ru'));
+    for (const past of [false, true]) {
+      for (const g of dated.filter((d) => d.when < now === past)) {
+        if (past) grey.push(rows.length);
+        rows.push([moscowDate(g.when), g.tariff, g.about, g.count, past ? 'Прошло' : 'Впереди']);
+      }
+    }
+
+    rows.push(['']);
+    section('2. Персональные — после ответов родителя, ближайшие сверху', [
+      'Когда',
+      'Родитель',
+      'О чём напомнит',
+      'Почему',
+      'Пакет, класс',
+      'Сейчас на шаге',
+      'Telegram ID',
+    ]);
+    const personal = upcoming.filter((u) => !u.reminder.at);
+    if (!personal.length) rows.push(['Сейчас ничего не запланировано']);
+    for (const u of personal.slice(0, PERSONAL_LIMIT)) {
+      const vars = this.renderer.buildVars(u.user);
+      const target = this.scenario.hasScreen(u.reminder.screen) ? this.scenario.getScreen(u.reminder.screen) : undefined;
+      const current = this.scenario.hasScreen(u.user.stage) ? this.scenario.getScreen(u.user.stage) : undefined;
+      const why = u.reminder.ifDeferred
+        ? 'Родитель отложил первый шаг'
+        : `Через ${daysText(u.reminder.afterHours ?? 0)} после «${this.gist(u.source, vars)}»${u.reminder.rearm ? ' — повторяет, пока нет ответа' : ''}`;
+      rows.push([
+        moscowDateTime(daytime(u.runAt)),
+        u.user.name ?? '',
+        target ? this.gist(target, vars) : u.reminder.screen,
+        why,
+        [u.user.package, u.user.class ? `${u.user.class} класс` : ''].filter(Boolean).join(', '),
+        this.stepName(current, vars),
+        u.user.tgId.toString(),
+      ]);
+    }
+    if (personal.length > PERSONAL_LIMIT) rows.push([`…и ещё ${personal.length - PERSONAL_LIMIT}`]);
+
+    await this.sheets!.spreadsheets.values.clear({ spreadsheetId: this.spreadsheetId, range: this.remindersSheetName });
+    await this.sheets!.spreadsheets.values.update({
+      spreadsheetId: this.spreadsheetId,
+      range: `${this.remindersSheetName}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: rows },
+    });
+    const row = (r: number) => ({ sheetId, startRowIndex: r, endRowIndex: r + 1 });
+    await this.sheets!.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      requestBody: {
+        requests: [
+          ...this.columnWidths(sheetId, [140, 210, 340, 300, 170, 230, 110]),
+          {
+            repeatCell: {
+              range: { sheetId },
+              cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'TOP', textFormat: { bold: false, foregroundColor: rgb('#000000') } } },
+              fields: 'userEnteredFormat(wrapStrategy,verticalAlignment,textFormat.bold,textFormat.foregroundColor)',
+            },
+          },
+          ...bold.map((r) => ({ repeatCell: { range: row(r), cell: { userEnteredFormat: { textFormat: { bold: true } } }, fields: 'userEnteredFormat.textFormat.bold' } })),
+          ...titles.map((r) => ({ repeatCell: { range: row(r), cell: { userEnteredFormat: { wrapStrategy: 'OVERFLOW_CELL' } }, fields: 'userEnteredFormat.wrapStrategy' } })),
+          ...grey.map((r) => ({
+            repeatCell: { range: row(r), cell: { userEnteredFormat: { textFormat: { foregroundColor: rgb('#9aa0a6') } } }, fields: 'userEnteredFormat.textFormat.foregroundColor' },
+          })),
+          { updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' } },
+        ],
+      },
     });
   }
 
@@ -782,6 +946,10 @@ export class SheetsSyncService implements OnModuleInit {
       ['Вкладки', ''],
       [p, 'Один родитель (герой) — одна строка: на каком шаге, всё ли в порядке, что сделать.'],
       [this.answersSheetName, 'Журнал: кто, когда, на какой вопрос бота что ответил. Красным — затруднения.'],
+      [
+        this.remindersSheetName,
+        'Что бот напишет сам. Общие — даты календаря тарифа и сколько родителей их получат. Персональные — «через N дней после ответа», кому и когда.',
+      ],
       [this.statsSheetName, 'Сводка: сколько родителей в каждом статусе, на каких шагах, где чаще всего затрудняются.'],
       [''],
       ['Статусы', ''],
@@ -808,9 +976,9 @@ export class SheetsSyncService implements OnModuleInit {
     const bold = (row: number) => ({
       repeatCell: { range: { sheetId, startRowIndex: row, endRowIndex: row + 1, startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 12 } } }, fields: 'userEnteredFormat.textFormat' },
     });
-    const statusRows = STATUS_COLORS.map(([text, hex], i) => ({
+    const statusRows = STATUS_COLORS.map(([text, hex]) => ({
       repeatCell: {
-        range: { sheetId, startRowIndex: 9 + i, endRowIndex: 10 + i, startColumnIndex: 0, endColumnIndex: 1 },
+        range: { sheetId, startRowIndex: rows.findIndex((r) => r[0] === text), endRowIndex: rows.findIndex((r) => r[0] === text) + 1, startColumnIndex: 0, endColumnIndex: 1 },
         cell: { userEnteredFormat: { backgroundColor: rgb(hex), textFormat: { bold: true } } },
         fields: 'userEnteredFormat(backgroundColor,textFormat)',
       },
@@ -820,11 +988,16 @@ export class SheetsSyncService implements OnModuleInit {
       requestBody: {
         requests: [
           ...this.columnWidths(sheetId, [230, 620]),
-          { repeatCell: { range: { sheetId }, cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'TOP' } }, fields: 'userEnteredFormat(wrapStrategy,verticalAlignment)' } },
+          // Сначала сброс: строки прошлой версии стояли на других местах.
+          {
+            repeatCell: {
+              range: { sheetId },
+              cell: { userEnteredFormat: { wrapStrategy: 'WRAP', verticalAlignment: 'TOP', backgroundColor: rgb('#ffffff'), textFormat: { bold: false, fontSize: 10 } } },
+              fields: 'userEnteredFormat(wrapStrategy,verticalAlignment,backgroundColor,textFormat)',
+            },
+          },
           { repeatCell: { range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 }, cell: { userEnteredFormat: { textFormat: { bold: true, fontSize: 14 } } }, fields: 'userEnteredFormat.textFormat' } },
-          bold(3),
-          bold(8),
-          bold(15),
+          ...['Вкладки', 'Статусы', 'Что можно править'].map((title) => bold(rows.findIndex((r) => r[0] === title))),
           ...statusRows,
         ],
       },
