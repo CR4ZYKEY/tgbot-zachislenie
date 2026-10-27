@@ -2,7 +2,7 @@
 //   "Родители"   — строки данных; шапка и оформление колонок остаются.
 //   "Ответы"     — целиком вместе с шапкой: воркер на следующем тике
 //                  создаст шапку и оформление заново, без следов старых строк.
-//   "Статистика" — целиком, пересчитается на следующем тике.
+//   "Напоминания", "Статистика" — целиком, пересчитаются на следующем тике.
 //   "Как читать" — не трогаем.
 // Плюс сбрасывает курсор выгрузки ответов в БД — иначе воркер решит, что
 // уже всё выгрузил (курсор по времени последнего ответа), и не покажет
@@ -20,6 +20,7 @@ async function main() {
   const parentsSheetName = process.env.GOOGLE_SHEETS_SHEET_NAME ?? 'Родители';
   const answersSheetName = process.env.GOOGLE_SHEETS_ANSWERS_SHEET_NAME ?? 'Ответы';
   const statsSheetName = process.env.GOOGLE_SHEETS_STATS_SHEET_NAME ?? 'Статистика';
+  const remindersSheetName = 'Напоминания';
   const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL!;
   const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY!.replace(/\\n/g, '\n');
 
@@ -39,6 +40,7 @@ async function main() {
   };
   await clear(`${parentsSheetName}!A2:Z`, `Строки в "${parentsSheetName}" очищены, шапка оставлена`);
   await clear(answersSheetName, `Вкладка "${answersSheetName}" очищена целиком`);
+  await clear(remindersSheetName, `Вкладка "${remindersSheetName}" очищена целиком`);
   await clear(statsSheetName, `Вкладка "${statsSheetName}" очищена целиком`);
 
   const prisma = new PrismaClient();
